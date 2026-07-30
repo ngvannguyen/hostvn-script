@@ -77,14 +77,14 @@ Giữ nguyên đầy đủ tính năng bản gốc: tối ưu cấu hình theo t
 
 ```sh
 apt update && apt install git -y
-git clone https://github.com/Circling5714/hostvn-script.git hostvn-script
+git clone https://github.com/ngvannguyen/hostvn-script.git hostvn-script
 cd hostvn-script && bash install
 ```
 
 ### Cách 2: Cài online (qua GitHub Pages)
 
 ```sh
-wget https://circling5714.github.io/hostvn-script/install && bash install
+wget https://ngvannguyen.github.io/hostvn-script/install && bash install
 ```
 
 Link tải mặc định đặt tại biến `SCRIPT_LINK`/`HOSTVN_SCRIPT_LINK` trong `install` và `UPDATE_LINK` trong `menu/helpers/variable_common` — nếu fork thì đổi về repo của bạn trước khi phân phối.

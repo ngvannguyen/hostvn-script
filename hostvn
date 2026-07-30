@@ -29,7 +29,7 @@ IPADDRESS=$(curl -s4 --max-time 10 https://api.ipify.org || curl -s4 --max-time 
 DIR=$(pwd)
 BASH_DIR="/var/hostvn"
 GITHUB_RAW_LINK="https://raw.githubusercontent.com"
-SOURCE_LINK="${HOSTVN_SCRIPT_LINK:-https://circling5714.github.io/hostvn-script}"
+SOURCE_LINK="${HOSTVN_SCRIPT_LINK:-https://ngvannguyen.github.io/hostvn-script}"
 LOCAL_DIR="${HOSTVN_LOCAL_DIR}"
 FILE_INFO="${BASH_DIR}/.hostvn.conf"
 HOSTNAME=$(hostname)
@@ -69,7 +69,7 @@ INVALID_PHP2_OPTION="${RED}Lua chon cua ban khong chinh xac. Vui long chon lai.$
 SELECT_PHP_2="Lua chon phien ban PHP thu hai ban muon su dung:"
 LOGIN_NOTI1="HostVN Scripts — Cai dat va toi uu LEMP Stack tren Ubuntu"
 LOGIN_NOTI2="Neu can ho tro vui long truy cap ${AUTHOR_CONTACT}"
-LOGIN_NOTI3="Truoc khi dat cau hoi vui long xem Document: https://github.com/Circling5714/hostvn-script"
+LOGIN_NOTI3="Truoc khi dat cau hoi vui long xem Document: https://github.com/ngvannguyen/hostvn-script"
 LOGIN_NOTI4="De mo menu ban go lenh sau: hostvn"
 
 # Random Port
@@ -83,8 +83,8 @@ USR_DIR="/usr/share"
 # Get info VPS
 CPU_CORES=$(grep -c "processor" /proc/cpuinfo)
 RAM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-SWAP_TOTAL=$(awk '/SwapFree/ {print $2}' /proc/meminfo)
-PHP_MEM=${RAM_TOTAL}+${SWAP_TOTAL}
+SWAP_TOTAL=$(awk '/SwapTotal/ {print $2}' /proc/meminfo)
+PHP_MEM=$((RAM_TOTAL + SWAP_TOTAL))
 MAX_CLIENT=$((CPU_CORES * 1024))
 
 ############################################
@@ -579,7 +579,7 @@ CREATE DATABASE IF NOT EXISTS phpmyadmin;
 FLUSH PRIVILEGES;
 EOphpmyadmin_temp
 
-    mysql -u root -p"${sql_root_pass}" < /opt/phpmyadmin.temp
+    mysql -u root < /opt/phpmyadmin.temp
     rm -f /opt/phpmyadmin.temp
 
     if [[ -n "${LOCAL_DIR}" && -f "${LOCAL_DIR}/phpmyadmin.sql" ]]; then
@@ -587,7 +587,7 @@ EOphpmyadmin_temp
     else
         curl -o phpmyadmin.sql "${SOURCE_LINK}"/phpmyadmin.sql
     fi
-    mysql -u root -p"${sql_root_pass}" phpmyadmin < phpmyadmin.sql
+    mysql -u root phpmyadmin < phpmyadmin.sql
     rm -rf phpmyadmin.sql
 }
 
@@ -2307,9 +2307,9 @@ php_admin_flag[log_errors] = on
 php_value[session.save_handler] = files
 php_value[session.save_path]    = /var/lib/php/session
 php_value[soap.wsdl_cache_dir]  = /var/lib/php/wsdlcache
-php_admin_value[disable_functions] = exec,system,passthru,shell_exec,dl,show_source,posix_kill,posix_mkfifo,posix_getpwuid,posix_setpgid,posix_setsid,posix_setuid,posix_setgid,posix_seteuid,posix_setegid,posix_uname
+php_admin_value[disable_functions] = exec,system,passthru,shell_exec,proc_close,proc_open,dl,popen,show_source,posix_kill,posix_mkfifo,posix_getpwuid,posix_setpgid,posix_setsid,posix_setuid,posix_setgid,posix_seteuid,posix_setegid,posix_uname
 ;php_admin_value[disable_functions] = exec,system,passthru,shell_exec,proc_close,proc_open,dl,popen,show_source,posix_kill,posix_mkfifo,posix_getpwuid,posix_setpgid,posix_setsid,posix_setuid,posix_setgid,posix_seteuid,posix_setegid,posix_uname
-;php_admin_value[open_basedir] = ${DEFAULT_DIR_TOOL}/:/tmp/:/var/tmp/:/dev/urandom:/usr/share/php/:/dev/shm:/var/lib/php/sessions/
+php_admin_value[open_basedir] = /usr/share/nginx/:/tmp/:/var/tmp/:/dev/urandom:/usr/share/php/:/dev/shm:/var/lib/php/sessions/:/usr/share/doc:/var/www/:/usr/local/apache2/htdocs/
 security.limit_extensions = .php
 EOwww_conf
 
@@ -2657,7 +2657,7 @@ EOsecure_sql
     Q2="GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
     Q3="FLUSH PRIVILEGES;"
     SQL="${Q1}${Q2}${Q3}"
-    mysql -uroot -p"${sql_root_pass}" -e "${SQL}"
+    mysql -u root -e "${SQL}"
 
     if [ -f "/usr/lib/systemd/system/mariadb.service" ]; then
         sed -i "s/LimitNOFILE=.*/LimitNOFILE=655350/g" /usr/lib/systemd/system/mariadb.service

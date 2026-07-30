@@ -21,14 +21,14 @@ NC=$(tput sgr0)
 MENU_NAME="hostvn"
 AUTHOR="HostVN"
 AUTHOR_WEB="HostVN Scripts"
-UPDATE_LINK="https://circling5714.github.io/hostvn-script"
+UPDATE_LINK="https://ngvannguyen.github.io/hostvn-script"
 CURRENT_DATE=$(date +%Y-%m-%d)
 
 # Set directory variables
 BASH_DIR="/var/hostvn"
 USER_DIR="/var/hostvn/users"
 TEMPLATE_DIR="${BASH_DIR}/menu/template"
-CUSTOM_DIR="BASH_DIR/custom"
+CUSTOM_DIR="${BASH_DIR}/custom"
 NGINX_CONF_DIR="/etc/nginx"
 VHOST_DIR="${NGINX_CONF_DIR}/conf.d"
 SSL_DIR="${NGINX_CONF_DIR}/ssl"
