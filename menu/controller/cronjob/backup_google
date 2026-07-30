@@ -208,7 +208,14 @@ domain=""
 type=""
 remote_name=""
 
-if [ -f "/root/.config/rclone/rclone.conf" ]; then
+# Kiem tra co remote Google Drive (type=drive) trong rclone.conf khong
+_has_drive_remote() {
+    local conf="/root/.config/rclone/rclone.conf"
+    [ -f "${conf}" ] || return 1
+    grep -q "type = drive" "${conf}" 2>/dev/null || grep -q "type=drive" "${conf}" 2>/dev/null
+}
+
+if _has_drive_remote; then
     _select_remote
     if [[ -z "${remote}" ]]; then
         clear
@@ -218,31 +225,10 @@ if [ -f "/root/.config/rclone/rclone.conf" ]; then
     fi
 else
     clear
-    printf "%s\n" "${RED}Ban chua cau hinh ket noi voi Google Drive.${NC}"
-    prompt_connect_drive="n"
-    echo "Ban co muon cau hinh ket noi voi Google Drive khong ?"
-    PS3='Nhap lua chon cua ban (1-2): '
-    options=("Yes" "No")
-    select opt in "${options[@]}"; do
-        case $opt in
-        "Yes")
-            prompt_connect_drive="y"
-            break
-            ;;
-        "No")
-            prompt_connect_drive="n"
-            break
-            ;;
-        *) printf "%s\n" "${RED}Ban nhap sai, vui long nhap lai.${NC}" ;;
-        esac
-    done
-
-    if [[ "${prompt_connect_drive}" =~ ^([yY])$ ]]; then
-        _create_drive_connect
-    else
-        clear
-        printf "${RED}%s${NC}\n" "Huy thao tac."
-    fi
+    printf "%s\n" "${RED}Ban chua ket noi Google Drive.${NC}"
+    printf "%s\n" "Vui long vao Menu 8 -> 4 (Ket noi Google Drive) de thiet lap truoc."
+    printf "%s\n" "Sau khi ket noi thanh cong, quay lai day de tao cronjob."
 fi
 
 menu_cronjob
+
