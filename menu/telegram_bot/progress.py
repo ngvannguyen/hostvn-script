@@ -32,6 +32,13 @@ async def _animate(edit: Callable[[str], Awaitable[None]], title: str,
                    stages: Optional[list[tuple[float, str]]]) -> None:
     start = time.monotonic()
     last = None
+    # Cho 0.3s truoc frame dau: neu task xong trong 0.4s (fast path cua
+    # _progress_op), animation nay bi huy luon ma KHONG gui API call nao.
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=0.3)
+        return
+    except asyncio.TimeoutError:
+        pass
     while not stop.is_set():
         elapsed = time.monotonic() - start
         pct = _pct(elapsed, est)
@@ -48,7 +55,7 @@ async def _animate(edit: Callable[[str], Awaitable[None]], title: str,
                 pass
             last = text
         try:
-            await asyncio.wait_for(stop.wait(), timeout=1.1)
+            await asyncio.wait_for(stop.wait(), timeout=0.7)
         except asyncio.TimeoutError:
             pass
 

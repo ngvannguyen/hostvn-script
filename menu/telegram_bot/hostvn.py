@@ -23,7 +23,7 @@ _SKIP_DB = {"information_schema", "performance_schema", "mysql", "sys", "phpmyad
 # --------------------------------------------------------------------------- #
 # TTL cache: tranh goi subprocess lap lai trong thoi gian ngan (menu navigation)
 # --------------------------------------------------------------------------- #
-_cache: dict[str, tuple[float, object]] = {}
+_cache = {}
 
 def _cached(key: str, ttl: float, fn):
     """Tra ket qua tu cache neu chua het han, neu khong thi goi fn() va luu."""
@@ -107,7 +107,13 @@ def genpw(n: int = 16) -> str:
 # Dich vu (_svc)
 # --------------------------------------------------------------------------- #
 def svc(action: str, service: str, timeout: int = 40) -> str:
-    return sh(f"_svc {shlex.quote(action)} {shlex.quote(service)}", timeout, source_env=True, merge=True)
+    result = sh(f"_svc {shlex.quote(action)} {shlex.quote(service)}", timeout, source_env=True, merge=True)
+    # Xoa cache trang thai dich vu sau moi thao tac (start/stop/restart/reload)
+    # de man hinh tiep theo hien trang thai moi nhat
+    for k in list(_cache):
+        if k.startswith("svc:"):
+            del _cache[k]
+    return result
 
 
 def svc_status(service: str) -> str:
@@ -115,6 +121,10 @@ def svc_status(service: str) -> str:
 
 
 def icon(service: str) -> str:
+    # Thu dung cache cua services_status truoc (nhanh, khong spawn subprocess)
+    for v in _cache.values():
+        if isinstance(v[1], dict) and service in v[1]:
+            return C.E["on"] if v[1][service] == "active" else C.E["off"]
     return C.E["on"] if svc_status(service) == "active" else C.E["off"]
 
 

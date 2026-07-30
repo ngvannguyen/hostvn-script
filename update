@@ -1181,3 +1181,8 @@ rm -rf /usr/local/bin/wp
 curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
 mv wp-cli.phar wp && chmod +x wp
 mv wp /usr/local/bin/
+
+# Restart Telegram Bot (neu dang chay) — file code da bi thay the nen can restart
+if systemctl is-active hostvn-telegram-bot >/dev/null 2>&1; then
+    systemctl restart hostvn-telegram-bot
+fi
