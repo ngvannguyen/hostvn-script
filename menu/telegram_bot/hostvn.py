@@ -20,6 +20,25 @@ import config as C
 DOMAIN_RE = re.compile(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 _SKIP_DB = {"information_schema", "performance_schema", "mysql", "sys", "phpmyadmin"}
 
+# --------------------------------------------------------------------------- #
+# TTL cache: tranh goi subprocess lap lai trong thoi gian ngan (menu navigation)
+# --------------------------------------------------------------------------- #
+_cache: dict[str, tuple[float, object]] = {}
+
+def _cached(key: str, ttl: float, fn):
+    """Tra ket qua tu cache neu chua het han, neu khong thi goi fn() va luu."""
+    now = time.monotonic()
+    entry = _cache.get(key)
+    if entry and now - entry[0] < ttl:
+        return entry[1]
+    result = fn()
+    _cache[key] = (now, result)
+    return result
+
+def cache_clear():
+    """Xoa toan bo cache (goi sau khi thay doi cau hinh / restart service)."""
+    _cache.clear()
+
 
 def _env() -> dict[str, str]:
     return {**os.environ, "PATH": C.PATH_ENV, "DEBIAN_FRONTEND": "noninteractive", "TERM": "dumb"}
@@ -100,23 +119,29 @@ def icon(service: str) -> str:
 
 
 def services_status(names: list[str]) -> dict[str, str]:
-    """Trang thai nhieu dich vu trong 1 lan goi bash (nhanh hon goi tung cai)."""
-    script = "; ".join(f'printf "%s:%s\\n" {shlex.quote(n)} "$(_svc is-active {shlex.quote(n)} 2>/dev/null)"'
-                       for n in names)
-    out = sh(script, 25, source_env=True)
-    result: dict[str, str] = {}
-    for line in out.splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            result[k.strip()] = v.strip()
-    return result
+    """Trang thai nhieu dich vu trong 1 lan goi bash (nhanh hon goi tung cai). Cache 8s."""
+    key = "svc:" + ",".join(names)
+    def _fetch():
+        script = "; ".join(f'printf "%s:%s\\n" {shlex.quote(n)} "$(_svc is-active {shlex.quote(n)} 2>/dev/null)"'
+                           for n in names)
+        out = sh(script, 25, source_env=True)
+        result: dict[str, str] = {}
+        for line in out.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                result[k.strip()] = v.strip()
+        return result
+    return _cached(key, 8.0, _fetch)
 
 
 def php_version() -> str:
-    out = sh("ls /etc/php 2>/dev/null", 10)
-    vers = sorted((x for x in out.split() if x[:1].isdigit()),
-                  key=lambda s: [int(p) for p in s.split(".") if p.isdigit()] or [0])
-    return vers[-1] if vers else "8.4"
+    """PHP version hien tai. Cache 30s (hiem khi doi)."""
+    def _fetch():
+        out = sh("ls /etc/php 2>/dev/null", 10)
+        vers = sorted((x for x in out.split() if x[:1].isdigit()),
+                      key=lambda s: [int(p) for p in s.split(".") if p.isdigit()] or [0])
+        return vers[-1] if vers else "8.4"
+    return _cached("php_ver", 30.0, _fetch)
 
 
 # --------------------------------------------------------------------------- #
@@ -1041,11 +1066,16 @@ BACKUP_ROOT = "/home/backup"
 
 
 def conf_val(key: str, path: str = C.FILE_INFO) -> str:
-    p = Path(path)
-    if not p.exists():
-        return ""
-    m = re.search(rf"^{re.escape(key)}=(.*)$", p.read_text(errors="replace"), re.M)
-    return m.group(1).strip().strip("\"'") if m else ""
+    """Doc gia tri tu file config. Cache 10s cho FILE_INFO."""
+    def _fetch():
+        p = Path(path)
+        if not p.exists():
+            return ""
+        m = re.search(rf"^{re.escape(key)}=(.*)$", p.read_text(errors="replace"), re.M)
+        return m.group(1).strip().strip("\"'") if m else ""
+    if path == C.FILE_INFO:
+        return _cached(f"conf:{key}", 10.0, _fetch)
+    return _fetch()
 
 
 def backup_site(domain: str, btype: str = "full", remote: str = "") -> tuple[bool, str, str]:

@@ -93,14 +93,29 @@ async def _make_editor(update: Update, edit_existing: bool):
 async def _progress_op(update, edit_existing, loading_title, work, render, est=5.0, stages=None):
     """Hien thanh tien trinh khi chay 'work' (awaitable) roi hien ket qua.
 
-    render(result) -> (text, keyboard).
+    Cho phep 0.4s: neu 'work' hoan thanh nhanh (vi du: co cache), ket qua hien
+    ngay ma KHONG can ve thanh tien trinh (bo qua edit 'Đang tải...').
     """
-    editor = await _make_editor(update, edit_existing)
-    result = await progress.run(editor, loading_title, work, est=est, stages=stages)
-    text, kb = render(result)
-    await editor(text, kb)
-    return result
-
+    task = asyncio.create_task(work)
+    try:
+        result = await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
+        # Nhanh -> chi sua ket qua 1 lan duy nhat
+        text, kb = render(result)
+        if edit_existing and update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+        else:
+            await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return result
+    except asyncio.TimeoutError:
+        # Cham -> ve thanh tien trinh
+        editor = await _make_editor(update, edit_existing)
+        result = await progress.run(editor, loading_title, task, est=est, stages=stages)
+        text, kb = render(result)
+        await editor(text, kb)
+        return result
 
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
@@ -354,18 +369,33 @@ GROUP_SCREENS = {
 FEATURE_LABEL = {k: lbl for row in menus.MAIN_MENU for k, lbl in row}
 
 
+# Man hinh NHANH (khong goi shell, chi text + keyboard) -> hien truc tiep, KHONG progress bar
+FAST_SCREENS = {
+    C.F_DOMAIN, C.F_DB, C.F_WP, C.F_SSL, C.F_BACKUP,
+    C.F_PERM, C.F_VPS, C.F_TOOL, C.F_ACC, C.F_CRON,
+    "wpadv", "wpplug",
+}
+
+
 async def open_group(update: Update, context: ContextTypes.DEFAULT_TYPE, feature: str, edit: bool) -> None:
     builder = GROUP_SCREENS.get(feature)
     if builder is None:
         return await show_menu(update, context)
-    label = FEATURE_LABEL.get(feature, "")
-    await _progress_op(
-        update, edit,
-        f"⏳ <b>Đang tải</b> {texts.esc(label)}…",
-        asyncio.to_thread(builder),
-        lambda r: r,          # builder da tra (text, keyboard)
-        est=4.0,
-    )
+
+    if feature in FAST_SCREENS:
+        # Fast path: goi builder truc tiep (khong subprocess), hien 1 API call duy nhat
+        text, kb = builder()
+        await _show(update, text, kb, edit)
+    else:
+        # Slow path: giu progress bar cho man hinh can goi shell (services_status, nginx -t, ...)
+        label = FEATURE_LABEL.get(feature, "")
+        await _progress_op(
+            update, edit,
+            f"⏳ <b>Đang tải</b> {texts.esc(label)}…",
+            asyncio.to_thread(builder),
+            lambda r: r,
+            est=3.0,
+        )
 
 
 # --------------------------------------------------------------------------- #
