@@ -56,18 +56,35 @@ _input() {
 
 _config_rclone() {
     rclone_config_file="/root/.config/rclone/rclone.conf"
-    if [ -f "${rclone_config_file}" ] && grep -wq "${remote_name}" "${rclone_config_file}"; then
+    mkdir -p /root/.config/rclone
+
+    if [ -f "${rclone_config_file}" ] && grep -q "\[${remote_name}\]" "${rclone_config_file}"; then
         clear
         printf "%s\n" "${RED}Remote Name '${remote_name}' da ton tai. Vui long chon ten khac.${NC}"
         return 1
     fi
 
-    if rclone config create "${remote_name}" drive client_id "${client_id}" client_secret "${client_secret}" config_token "${config_token}" scope drive use_trash false >/dev/null 2>&1; then
+    # Ghi truc tiep vao rclone.conf de tranh rclone bi treo cho stdin (Team Drive prompt)
+    cat >> "${rclone_config_file}" << EOF
+
+[${remote_name}]
+type = drive
+client_id = ${client_id}
+client_secret = ${client_secret}
+scope = drive
+token = ${config_token}
+EOF
+
+    clear
+    printf "%s\n" "Dang kiem tra ket noi toi Google Drive '${remote_name}'..."
+    if rclone lsd "${remote_name}:" >/dev/null 2>&1; then
         clear
         printf "%s\n" "${GREEN}Ket noi Google Drive '${remote_name}' thanh cong!${NC}"
     else
         clear
-        printf "%s\n" "${RED}Tao ket noi Google Drive that bai. Vui long kiem tra lai Token JSON.${NC}"
+        printf "%s\n" "${RED}Tao ket noi Google Drive that bai hoac Token khong hop le!${NC}"
+        printf "%s\n" "${RED}Da xoa cau hinh loi. Vui long kiem tra lai Token JSON.${NC}"
+        sed -i "/\[${remote_name}\]/,/^$/d" "${rclone_config_file}"
     fi
 }
 
