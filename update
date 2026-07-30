@@ -252,9 +252,19 @@ mariadb_calculation() {
 # Update Menu
 cd /var/hostvn
 if wget -O menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
+    # Bao ton venv cua telegram bot truoc khi xoa menu/
+    # (venv duoc tao rieng tren VPS, KHONG co trong menu.tar.gz)
+    if [ -d "/var/hostvn/menu/telegram_bot/venv" ]; then
+        mv /var/hostvn/menu/telegram_bot/venv /tmp/hostvn_tgbot_venv_bak
+    fi
     rm -rf menu
     tar -xf menu_new.tar.gz
     rm -f menu_new.tar.gz
+    # Khoi phuc venv sau khi giai nen
+    if [ -d "/tmp/hostvn_tgbot_venv_bak" ]; then
+        mkdir -p /var/hostvn/menu/telegram_bot
+        mv /tmp/hostvn_tgbot_venv_bak /var/hostvn/menu/telegram_bot/venv
+    fi
 else
     printf "${RED}%s${NC}\n" "Loi: Khong the tai hoac file menu.tar.gz bi loi!"
     printf "${RED}%s${NC}\n" "Vui long kiem tra lai ket noi hoac cau hinh GitHub Pages."
