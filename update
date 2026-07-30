@@ -308,6 +308,17 @@ for vhost_file in /etc/nginx/conf.d/*.conf /etc/nginx/alias/*.conf; do
     fi
 done
 
+# Create wrappers to silence MariaDB 11.4+ deprecation warnings
+for cmd in mysql:mariadb mysqldump:mariadb-dump mysqlshow:mariadb-show mysqladmin:mariadb-admin mysqlcheck:mariadb-check mysqlimport:mariadb-import mysqlupgrade:mariadb-upgrade; do
+    legacy="${cmd%%:*}"
+    modern="${cmd##*:}"
+    cat > "/usr/local/bin/${legacy}" << EOF
+#!/bin/sh
+exec /usr/bin/${modern} "\$@"
+EOF
+    chmod +x "/usr/local/bin/${legacy}"
+done
+
 # Update Nginx config
 check_disable_xmlrpc=$(grep -w "=" "/etc/nginx/wordpress/disable_xmlrpc.conf")
 if [ -z "${check_disable_xmlrpc}" ]; then

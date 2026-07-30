@@ -2675,6 +2675,17 @@ EOsecure_sql
         sed -i "s/PrivateTmp=false/PrivateTmp=true/g" /lib/systemd/system/mariadb.service
         systemctl daemon-reload
     fi
+
+    # Create wrappers to silence MariaDB 11.4+ deprecation warnings
+    for cmd in mysql:mariadb mysqldump:mariadb-dump mysqlshow:mariadb-show mysqladmin:mariadb-admin mysqlcheck:mariadb-check mysqlimport:mariadb-import mysqlupgrade:mariadb-upgrade; do
+        legacy="${cmd%%:*}"
+        modern="${cmd##*:}"
+        cat > "/usr/local/bin/${legacy}" << EOF
+#!/bin/sh
+exec /usr/bin/${modern} "\$@"
+EOF
+        chmod +x "/usr/local/bin/${legacy}"
+    done
 }
 
 ############################################
