@@ -251,9 +251,16 @@ mariadb_calculation() {
 
 # Update Menu
 cd /var/hostvn
-rm -rf menu
-wget "${UPDATE_LINK}"/menu.tar.gz
-tar -xvf menu.tar.gz &> /dev/null && rm -rf menu.tar.gz
+if wget -O menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
+    rm -rf menu
+    tar -xf menu_new.tar.gz
+    rm -f menu_new.tar.gz
+else
+    printf "${RED}%s${NC}\n" "Loi: Khong the tai hoac file menu.tar.gz bi loi!"
+    printf "${RED}%s${NC}\n" "Vui long kiem tra lai ket noi hoac cau hinh GitHub Pages."
+    rm -f menu_new.tar.gz
+    exit 1
+fi
 clear
 cd menu
 chmod +x ./* &> /dev/null
