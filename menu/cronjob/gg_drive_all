@@ -30,10 +30,10 @@ for users in /home/*; do
                             mkdir -p /home/backup/"${CURRENT_DATE}"/"${domain}"
                         fi
                         rm -rf /home/backup/"${CURRENT_DATE}"/"${domain}"/*
-                        cd /home/backup/"${CURRENT_DATE}"/"${domain}" || exit
-                        mysqldump -uadmin -p"${mysql_pwd}" "${db_name}" | gzip > "${db_name}".sql.gz
+                        cd /home/backup/"${CURRENT_DATE}"/"${domain}" || continue
+                        if [ -n "${db_name}" ]; then mariadb-dump -uadmin -p"${mysql_pwd}" "${db_name}" 2>/dev/null | gzip > "${db_name}".sql.gz; fi
 
-                        cd /home/"${user}"/"${domain}" || exit
+                        cd /home/"${user}"/"${domain}" || continue
                         if [[ ! -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
                             cp /home/"${user}"/"${domain}"/wp-config.php /home/"${user}"/"${domain}"/public_html/wp-config.php
                         fi
