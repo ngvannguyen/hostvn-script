@@ -49,14 +49,15 @@ _update(){
     dos2unix update
     chmod +x update
     bash update
+    update_exit_code=$?
     rm -rf update
     clear
-    if nginx -t; then
+    if [ $update_exit_code -eq 0 ] && nginx -t; then
         printf "%s\n" "${GREEN}Update ${AUTHOR} Script thanh cong.${NC}"
         printf "%s\n" "${RED}Script se tu dong thoat menu de ap dung update...${NC}"
     else
-        nginx -t
-        printf "%s\n" "${RED}Loi cau hinh Nginx. Vui long kiem tra lai cau hinh Nginx.${NC}"
+        printf "${RED}%s${NC}\n" "Loi: Quatrinh cap nhat that bai!"
+        printf "${RED}%s${NC}\n" "Vui long kiem tra loi phia tren (Loi tai file hoac loi Nginx)."
     fi
     sleep 3
     exit
