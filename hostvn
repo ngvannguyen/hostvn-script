@@ -2076,7 +2076,11 @@ server {
 }
 
 server {
-    listen ${RANDOM_ADMIN_PORT};
+    listen ${RANDOM_ADMIN_PORT} ssl;
+    http2 on;
+
+    ssl_certificate         /etc/nginx/ssl/server/server.crt;
+    ssl_certificate_key     /etc/nginx/ssl/server/server.key;
 
     server_name ${IPADDRESS};
 
@@ -3752,8 +3756,8 @@ printf "              Luu lai thong tin duoi day de truy cap SSH va phpMyAdmin  
 printf "                  ${RED}%s${NC}\n           \n" "De mo Menu su dung lenh: hostvn"
 printf "==========================================================================\n"
 printf "SSH  Port                    : %s\n" "${SSH_PORT}"
-printf "phpMyAdmin                   : %s\n" "http://${IPADDRESS}:${RANDOM_ADMIN_PORT}/phpmyadmin"
-printf "Link Opcache Dashboard       : %s\n" "http://${IPADDRESS}:${RANDOM_ADMIN_PORT}/opcache"
+printf "phpMyAdmin                   : %s\n" "https://${IPADDRESS}:${RANDOM_ADMIN_PORT}/phpmyadmin"
+printf "Link Opcache Dashboard       : %s\n" "https://${IPADDRESS}:${RANDOM_ADMIN_PORT}/opcache"
 echo "User phpMyAdmin va Admin Tool: admin                                   "
 printf "Password Admin tool          : %s\n" "${ADMIN_TOOL_PWD}"
 printf "Password phpMyAdmin          : %s\n" "${sql_admin_pass}"
