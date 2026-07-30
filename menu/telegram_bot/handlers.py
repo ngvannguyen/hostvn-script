@@ -93,29 +93,14 @@ async def _make_editor(update: Update, edit_existing: bool):
 async def _progress_op(update, edit_existing, loading_title, work, render, est=5.0, stages=None):
     """Hien thanh tien trinh khi chay 'work' (awaitable) roi hien ket qua.
 
-    Cho phep 0.4s: neu 'work' hoan thanh nhanh (vi du: co cache), ket qua hien
-    ngay ma KHONG can ve thanh tien trinh (bo qua edit 'Đang tải...').
+    render(result) -> (text, keyboard).
+    Khi result co cache (< 0.3s), animation tu dong bi huy truoc khi gui frame dau.
     """
-    task = asyncio.create_task(work)
-    try:
-        result = await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
-        # Nhanh -> chi sua ket qua 1 lan duy nhat
-        text, kb = render(result)
-        if edit_existing and update.callback_query:
-            try:
-                await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
-        else:
-            await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return result
-    except asyncio.TimeoutError:
-        # Cham -> ve thanh tien trinh
-        editor = await _make_editor(update, edit_existing)
-        result = await progress.run(editor, loading_title, task, est=est, stages=stages)
-        text, kb = render(result)
-        await editor(text, kb)
-        return result
+    editor = await _make_editor(update, edit_existing)
+    result = await progress.run(editor, loading_title, work, est=est, stages=stages)
+    text, kb = render(result)
+    await editor(text, kb)
+    return result
 
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
