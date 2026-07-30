@@ -23,7 +23,6 @@ DIR=$(pwd)
 RED='\033[0;31m'
 NC='\033[0m'
 
-SCRIPTS_VERSION="1.1.1"
 # Ca hai nguon deu qua HTTPS; cuoi cung moi lui ve IP cuc bo.
 IPADDRESS=$(curl -s4 --max-time 10 https://api.ipify.org || curl -s4 --max-time 10 https://ifconfig.co/ip || hostname -I | awk '{print $1}')
 DIR=$(pwd)
@@ -50,6 +49,8 @@ get_version_value() {
         curl -s "${SOURCE_LINK}"/version | grep "^$1=" | cut -f2 -d'='
     fi
 }
+
+SCRIPTS_VERSION=$(get_version_value "script_version")
 
 # Service Version
 PHPMYADMIN_VERSION=$(get_version_value "phpmyadmin_version")
