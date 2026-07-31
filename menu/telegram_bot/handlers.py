@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from pathlib import Path
 
 from telegram import Update
@@ -23,6 +24,10 @@ from permissions import (can_write, get_user_features, has_feature,
                          is_actor_allowed, is_allowed)
 
 HTML = ParseMode.HTML
+
+# Per-chat lock: chi xu ly 1 callback tai 1 thoi diem cho moi chat.
+# Tranh 2 handler chay song song va cung edit 1 message gay xung dot.
+_cb_locks: defaultdict = defaultdict(asyncio.Lock)
 E = C.E
 title = texts.title
 pre = texts.pre
@@ -388,20 +393,25 @@ async def open_group(update: Update, context: ContextTypes.DEFAULT_TYPE, feature
 # --------------------------------------------------------------------------- #
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
+    # Tra loi Telegram ngay de xoa vong quay loading tren nut
     await query.answer()
     chat = _gate(update)
     if chat is None:
         return
 
-    parts = (query.data or "").split("|")
-    domain = parts[0] if parts else ""
-    action = parts[1] if len(parts) > 1 else ""
-    params = parts[2:]
+    # Serialize per-chat: chi 1 callback duoc xu ly tai 1 thoi diem
+    # Neu nguoi dung bam lien tuc, cac yeu cau xep hang cho nhau thay vi
+    # chay song song va xung dot khi cung edit 1 message.
+    async with _cb_locks[chat]:
+        parts = (query.data or "").split("|")
+        domain = parts[0] if parts else ""
+        action = parts[1] if len(parts) > 1 else ""
+        params = parts[2:]
 
-    route = CALLBACK_ROUTES.get(domain)
-    if route is None:
-        return await query.edit_message_text("⚠️ Lựa chọn không hợp lệ.", parse_mode=HTML)
-    await route(update, context, action, params)
+        route = CALLBACK_ROUTES.get(domain)
+        if route is None:
+            return await query.edit_message_text("⚠️ Lựa chọn không hợp lệ.", parse_mode=HTML)
+        await route(update, context, action, params)
 
 
 async def cb_nav(update, context, action, params):
