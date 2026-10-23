@@ -2658,8 +2658,19 @@ EOmy_cnf
     sql_root_pass=$(gen_pass)
     sql_admin_pass=$(gen_pass)
 
-    systemctl start mariadb
+    mkdir -p /run/mysqld
+    chown -R mysql:mysql /run/mysqld
+    chmod 755 /run/mysqld
+
+    systemctl restart mariadb
     systemctl enable mariadb
+
+    for _ in {1..20}; do
+        if [ -S /run/mysqld/mysqld.sock ] && (mysqladmin ping --socket=/run/mysqld/mysqld.sock --silent 2>/dev/null || mariadb-admin ping --socket=/run/mysqld/mysqld.sock --silent 2>/dev/null); then
+            break
+        fi
+        sleep 1
+    done
 
     # Thay the mysql_secure_installation (prompt thay doi giua cac phien ban MariaDB).
     # Root van dang nhap duoc qua unix_socket (khong can mat khau khi la user root he thong)
