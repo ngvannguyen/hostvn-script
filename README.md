@@ -13,7 +13,7 @@ This is a shell script used to install LEMP Stack (Nginx - MariaDB - PHP-FPM) on
 
 - Nginx **1.30.x** (stable) build từ source với **PCRE2 + OpenSSL 3 của hệ thống**, hỗ trợ **HTTP/2 + HTTP/3**, kèm module: ngx_cache_purge (fork nginx-modules), headers-more, brotli, vts.
 - MariaDB **11.8 LTS** (repo chính thức, tự fallback về gói distro nếu repo chưa hỗ trợ bản Ubuntu mới).
-- PHP đa phiên bản qua PPA ondrej/php: **8.4, 8.3, 8.2, 7.4** (chọn được 2 bản chạy song song).
+- PHP đa phiên bản qua repo packages.sury.org / PPA: **8.4, 8.3, 8.2, 7.4** (chọn được 2 bản chạy song song).
 - phpMyAdmin **5.2.x**.
 - Configure Nginx FastCGI cache, Brotli Compress.
 - Install PHPMemcachedAdmin, phpRedisAdmin, Opcache Dashboard.
@@ -28,7 +28,7 @@ This is a shell script used to install LEMP Stack (Nginx - MariaDB - PHP-FPM) on
 - ✅ Nginx 1.24 → **1.30.4**; bỏ OpenSSL 1.1.1t (EOL) và PCRE 8.45 tĩnh → dùng **OpenSSL 3 + PCRE2** của hệ thống, thêm **HTTP/3**.
 - ✅ MariaDB 10.11 → **11.8 LTS**; bỏ SHA256 hardcode của `mariadb_repo_setup` → dùng keyring + deb822 sources chính thức.
 - ✅ PHP mặc định 8.2 → **8.4**; sửa điều kiện gói `php-json` (PHP 8+ đã tích hợp sẵn).
-- ✅ Kiểm tra PPA ondrej/php có hỗ trợ suite trước khi thêm (Ubuntu 26.04 fallback về PHP distro).
+- ✅ Hỗ trợ kho `packages.sury.org` chính thức cho PHP (đầy đủ bản cho Ubuntu 22.04, 24.04, 26.04 resolute).
 - ✅ Thay `mysql_secure_installation` heredoc bằng SQL trực tiếp (root giữ cả unix_socket + password auth).
 - ✅ Set `DEBIAN_FRONTEND=noninteractive` + `NEEDRESTART_MODE=a` (tránh treo prompt needrestart trên 22.04+).
 - ✅ Sửa tên gói apt cho Ubuntu mới: `python3`, `libncurses-dev`, `libaio-dev`, `libpcre2-dev`…
@@ -69,7 +69,7 @@ Giữ nguyên đầy đủ tính năng bản gốc: tối ưu cấu hình theo t
 ## 2. Requirements
 
 - VPS tối thiểu 512MB RAM, chưa cài dịch vụ nào.
-- **Ubuntu 22.04, 24.04 hoặc 26.04 LTS** (26.04 ở chế độ experimental — PPA ondrej/php có thể chưa hỗ trợ).
+- **Ubuntu 22.04, 24.04 hoặc 26.04 LTS**.
 
 ## 3. Installation
 

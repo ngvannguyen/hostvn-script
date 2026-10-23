@@ -42,7 +42,7 @@ install  ──►  ubuntu  ──►  hostvn  ──►  menu.tar.gz (menu qu�
 
 | Thành phần | Bản gốc | Bản rebuild | Ghi chú |
 |---|---|---|---|
-| Ubuntu mới nhất | — | 26.04 LTS "Resolute Raccoon" (4/2026) | ondrej/php PPA chưa hỗ trợ |
+| Ubuntu mới nhất | — | 26.04 LTS "Resolute Raccoon" (4/2026) | Hỗ trợ qua kho packages.sury.org |
 | Nginx | 1.24.0 | **1.30.4** stable | vá CVE-2026-42533, CVE-2026-60005, CVE-2026-56434 |
 | OpenSSL | 1.1.1t build tĩnh (EOL!) | **OpenSSL 3 hệ thống** | 1.1.1 hết hỗ trợ từ 9/2023 |
 | PCRE | 8.45 build tĩnh | **PCRE2 hệ thống** | libpcre3 đã bị gỡ khỏi Ubuntu 24.04+ |
@@ -266,7 +266,7 @@ Chế độ tuỳ chọn: mọi website phục vụ qua Cloudflare Tunnel, **VPS
 
 ## 14. Rủi ro đã biết / lưu ý
 
-- **Ubuntu 26.04**: chưa có PPA ondrej → chỉ có PHP mặc định của distro; MariaDB repo có thể chưa có suite `resolute` → script tự fallback gói distro.
+- **Ubuntu 26.04**: Dùng kho `packages.sury.org` của Ondřej Surý (Launchpad PPA không còn cập nhật suite mới); MariaDB repo có thể chưa có suite `resolute` → script tự fallback gói distro.
 - **PHP 5.6** đã bỏ khỏi danh sách; code xử lý 5.6 trong menu vẫn còn (vô hại) phòng người dùng cũ.
 - `wp package install` (wp-cli-rename-db-prefix…) có thể kêu ca trên PHP 8.4 — không chặn cài đặt.
 - `optipng 0.7.7` / `jpegoptim 1.5.2` giữ nguyên phiên bản (URL còn sống, build được GCC mới) — có thể nâng sau.

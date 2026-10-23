@@ -172,7 +172,7 @@ welcome
 if [[ " ${LIST_OS_VER_SUPPORT[*]} " == *" ${OS_VER} "* ]]; then
     if [ "${OS_VER}" == "26.04" ]; then
         printf "${RED}%s${NC}\n" "Luu y: Ubuntu 26.04 dang o che do thu nghiem (experimental)."
-        printf "${RED}%s${NC}\n" "PPA ondrej/php co the chua ho tro 26.04, khi do script se dung PHP mac dinh cua Ubuntu."
+        printf "${RED}%s${NC}\n" "Script se su dung kho goi PHP packages.sury.org cho Ubuntu 26.04."
         sleep 3
     fi
     remove_old_service

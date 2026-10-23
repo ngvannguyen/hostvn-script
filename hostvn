@@ -396,7 +396,7 @@ EOnginx_service
 }
 
 install_mariadb() {
-    apt-get install software-properties-common apt-transport-https ca-certificates curl -y
+    apt-get install software-properties-common apt-transport-https ca-certificates curl gnupg -y
 
     # Kiem tra repo MariaDB co ho tro phien ban Ubuntu nay khong,
     # neu chua co (VD: Ubuntu vua phat hanh) thi dung goi mariadb cua distro
@@ -423,12 +423,26 @@ EOmariadb_sources
 }
 
 install_php() {
-    # Chi them PPA ondrej/php neu PPA da ho tro phien ban Ubuntu nay
-    # (Ubuntu moi phat hanh co the chua duoc PPA ho tro -> dung PHP mac dinh cua distro)
-    if curl -sfI --max-time 15 "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${UBUNTU_CODENAME}/Release" >/dev/null 2>&1; then
+    # Uu tien kho packages.sury.org (Ondřej Surý da chuyen sang repo rieng, ho tro ca 22.04, 24.04 va 26.04 resolute)
+    # Neu packages.sury.org khong phan hoi, fallback sang Launchpad PPA
+    if curl -sfI --max-time 15 "https://packages.sury.org/php/dists/${UBUNTU_CODENAME}/Release" >/dev/null 2>&1; then
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://packages.sury.org/php/apt.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/sury-php.gpg
+        rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list
+
+        cat > "/etc/apt/sources.list.d/php.sources" << EOphp_sources
+# Sury PHP repository
+X-Repolib-Name: Sury PHP
+Types: deb
+URIs: https://packages.sury.org/php/
+Suites: ${UBUNTU_CODENAME}
+Components: main
+Signed-By: /etc/apt/keyrings/sury-php.gpg
+EOphp_sources
+    elif curl -sfI --max-time 15 "https://ppa.launchpadcontent.net/ondrej/php/ubuntu/dists/${UBUNTU_CODENAME}/Release" >/dev/null 2>&1; then
         add-apt-repository -y ppa:ondrej/php
     else
-        printf "${RED}%s${NC}\n" "PPA ondrej/php chua ho tro Ubuntu ${OS_VER} (${UBUNTU_CODENAME})."
+        printf "${RED}%s${NC}\n" "Repo PHP chua ho tro Ubuntu ${OS_VER} (${UBUNTU_CODENAME})."
         printf "${RED}%s${NC}\n" "Script se dung PHP tu kho goi cua Ubuntu. Mot so phien ban PHP co the khong kha dung."
     fi
 

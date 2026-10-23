@@ -135,7 +135,7 @@ _install_php(){
         fi
 
         php2_service_file_2="/lib/systemd/system/php${PHP2_VERSION_NEW}-fpm.service"
-        if [ -f "php2_service_file_2" ]; then
+        if [ -f "${php2_service_file_2}" ]; then
             sed -i '/ExecReload=/a LimitNOFILE=65535' "${php2_service_file_2}"
             sed -i '/ExecReload=/a LimitMEMLOCK=infinity' "${php2_service_file_2}"
             sed -i '/LimitNOFILE=65535/a PrivateTmp=true' "${php2_service_file_2}"
