@@ -419,10 +419,15 @@ EOmariadb_sources
     fi
 
     apt-get update -y
+    mkdir -p /run/mysqld
+    chown -R mysql:mysql /run/mysqld 2>/dev/null || true
+    chmod 755 /run/mysqld
     apt-get -y install mariadb-server mariadb-backup
 }
 
 install_php() {
+    apt-get install -y ca-certificates curl gnupg lsb-release
+
     # Uu tien kho packages.sury.org (Ondřej Surý da chuyen sang repo rieng, ho tro ca 22.04, 24.04 va 26.04 resolute)
     # Neu packages.sury.org khong phan hoi, fallback sang Launchpad PPA
     if curl -sfI --max-time 15 "https://packages.sury.org/php/dists/${UBUNTU_CODENAME}/Release" >/dev/null 2>&1; then
@@ -448,21 +453,26 @@ EOphp_sources
 
     apt-get update -y
 
-    apt-get -y install php"${PHP_VERSION}" php"${PHP_VERSION}"-fpm php"${PHP_VERSION}"-ldap php"${PHP_VERSION}"-zip \
-        php"${PHP_VERSION}"-cli php"${PHP_VERSION}"-mysql php"${PHP_VERSION}"-gd php"${PHP_VERSION}"-xml \
-        php"${PHP_VERSION}"-mbstring php"${PHP_VERSION}"-common php"${PHP_VERSION}"-soap \
-        php"${PHP_VERSION}"-curl php"${PHP_VERSION}"-bcmath php"${PHP_VERSION}"-snmp php"${PHP_VERSION}"-pspell \
-        php"${PHP_VERSION}"-gmp php"${PHP_VERSION}"-intl php"${PHP_VERSION}"-imap php"${PHP_VERSION}"-enchant \
-        php"${PHP_VERSION}"-xmlrpc php"${PHP_VERSION}"-tidy php"${PHP_VERSION}"-opcache php"${PHP_VERSION}"-cli \
-        php"${PHP_VERSION}"-dev php"${PHP_VERSION}"-imagick php"${PHP_VERSION}"-sqlite3
+    # 1. Cai dat cac goi cot loi
+    apt-get -y install php"${PHP_VERSION}" php"${PHP_VERSION}"-fpm php"${PHP_VERSION}"-cli php"${PHP_VERSION}"-common \
+        php"${PHP_VERSION}"-mysql php"${PHP_VERSION}"-gd php"${PHP_VERSION}"-xml \
+        php"${PHP_VERSION}"-mbstring php"${PHP_VERSION}"-curl php"${PHP_VERSION}"-zip \
+        php"${PHP_VERSION}"-soap php"${PHP_VERSION}"-bcmath php"${PHP_VERSION}"-intl \
+        php"${PHP_VERSION}"-opcache php"${PHP_VERSION}"-dev php"${PHP_VERSION}"-sqlite3 \
+        php"${PHP_VERSION}"-gmp php"${PHP_VERSION}"-ldap
+
+    # 2. Cai dat cac extension bo sung (khong dung script neu goi phu khong kha dung)
+    apt-get -y install php"${PHP_VERSION}"-imagick php"${PHP_VERSION}"-snmp \
+        php"${PHP_VERSION}"-pspell php"${PHP_VERSION}"-imap php"${PHP_VERSION}"-enchant \
+        php"${PHP_VERSION}"-xmlrpc php"${PHP_VERSION}"-tidy 2>/dev/null || true
 
     # Tu PHP 8.0 tro len, json da tich hop san, khong con goi rieng
     if [[ "${PHP_VERSION}" == 5.* || "${PHP_VERSION}" == 7.* ]]; then
-        apt -y install php"${PHP_VERSION}"-json
+        apt -y install php"${PHP_VERSION}"-json 2>/dev/null || true
     fi
 
     if [ "${PHP_VERSION}" == "5.6" ]; then
-        apt -y install php5.6-mcrypt
+        apt -y install php5.6-mcrypt 2>/dev/null || true
     fi
 
     if [ -f "/usr/lib/systemd/system/php${PHP_VERSION}-fpm.service" ]; then
@@ -493,21 +503,26 @@ EOphp_sources
 }
 
 install_php_2() {
-    apt-get -y install php"${PHP_VERSION_2}" php"${PHP_VERSION_2}"-fpm php"${PHP_VERSION_2}"-ldap php"${PHP_VERSION_2}"-zip \
-        php"${PHP_VERSION_2}"-cli php"${PHP_VERSION_2}"-mysql php"${PHP_VERSION_2}"-gd php"${PHP_VERSION_2}"-xml \
-        php"${PHP_VERSION_2}"-mbstring php"${PHP_VERSION_2}"-common php"${PHP_VERSION_2}"-soap \
-        php"${PHP_VERSION_2}"-curl php"${PHP_VERSION_2}"-bcmath php"${PHP_VERSION_2}"-snmp php"${PHP_VERSION_2}"-pspell \
-        php"${PHP_VERSION_2}"-gmp php"${PHP_VERSION_2}"-intl php"${PHP_VERSION_2}"-imap php"${PHP_VERSION_2}"-enchant \
-        php"${PHP_VERSION_2}"-xmlrpc php"${PHP_VERSION_2}"-tidy php"${PHP_VERSION_2}"-opcache php"${PHP_VERSION_2}"-cli \
-        php"${PHP_VERSION_2}"-dev php"${PHP_VERSION_2}"-imagick php"${PHP_VERSION_2}"-sqlite3
+    # 1. Cai dat cac goi cot loi
+    apt-get -y install php"${PHP_VERSION_2}" php"${PHP_VERSION_2}"-fpm php"${PHP_VERSION_2}"-cli php"${PHP_VERSION_2}"-common \
+        php"${PHP_VERSION_2}"-mysql php"${PHP_VERSION_2}"-gd php"${PHP_VERSION_2}"-xml \
+        php"${PHP_VERSION_2}"-mbstring php"${PHP_VERSION_2}"-curl php"${PHP_VERSION_2}"-zip \
+        php"${PHP_VERSION_2}"-soap php"${PHP_VERSION_2}"-bcmath php"${PHP_VERSION_2}"-intl \
+        php"${PHP_VERSION_2}"-opcache php"${PHP_VERSION_2}"-dev php"${PHP_VERSION_2}"-sqlite3 \
+        php"${PHP_VERSION_2}"-gmp php"${PHP_VERSION_2}"-ldap
+
+    # 2. Cai dat cac extension bo sung
+    apt-get -y install php"${PHP_VERSION_2}"-imagick php"${PHP_VERSION_2}"-snmp \
+        php"${PHP_VERSION_2}"-pspell php"${PHP_VERSION_2}"-imap php"${PHP_VERSION_2}"-enchant \
+        php"${PHP_VERSION_2}"-xmlrpc php"${PHP_VERSION_2}"-tidy 2>/dev/null || true
 
     # Tu PHP 8.0 tro len, json da tich hop san, khong con goi rieng
     if [[ "${PHP_VERSION_2}" == 5.* || "${PHP_VERSION_2}" == 7.* ]]; then
-        apt -y install php"${PHP_VERSION_2}"-json
+        apt -y install php"${PHP_VERSION_2}"-json 2>/dev/null || true
     fi
 
     if [ "${PHP_VERSION_2}" == "5.6" ]; then
-        apt -y install php5.6-mcrypt
+        apt -y install php5.6-mcrypt 2>/dev/null || true
     fi
 
     PHP2_RELEASE="yes"
@@ -2671,6 +2686,15 @@ EOmy_cnf
         fi
         sleep 1
     done
+
+    # Fallback neu MariaDB chua chay: tat innodb_use_native_aio phong truong hop container/kernel chan AIO
+    if [ ! -S /run/mysqld/mysqld.sock ]; then
+        if ! grep -q "innodb_use_native_aio" /etc/mysql/my.cnf 2>/dev/null; then
+            sed -i '/# innodb settings/a innodb_use_native_aio = 0' /etc/mysql/my.cnf
+            systemctl restart mariadb
+            sleep 3
+        fi
+    fi
 
     # Thay the mysql_secure_installation (prompt thay doi giua cac phien ban MariaDB).
     # Root van dang nhap duoc qua unix_socket (khong can mat khau khi la user root he thong)

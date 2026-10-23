@@ -105,21 +105,26 @@ _install_php(){
     systemctl stop php"${PHP1_VERSION_OLD}"-fpm
     systemctl disable php"${PHP1_VERSION_OLD}"-fpm
 
-    apt -y install php"${PHP1_VERSION_NEW}" php"${PHP1_VERSION_NEW}"-fpm php"${PHP1_VERSION_NEW}"-ldap php"${PHP1_VERSION_NEW}"-zip \
-        php"${PHP1_VERSION_NEW}"-cli php"${PHP1_VERSION_NEW}"-mysql php"${PHP1_VERSION_NEW}"-gd php"${PHP1_VERSION_NEW}"-xml \
-        php"${PHP1_VERSION_NEW}"-mbstring php"${PHP1_VERSION_NEW}"-common php"${PHP1_VERSION_NEW}"-soap \
-        php"${PHP1_VERSION_NEW}"-curl php"${PHP1_VERSION_NEW}"-bcmath php"${PHP1_VERSION_NEW}"-snmp php"${PHP1_VERSION_NEW}"-pspell \
-        php"${PHP1_VERSION_NEW}"-gmp php"${PHP1_VERSION_NEW}"-intl php"${PHP1_VERSION_NEW}"-imap php"${PHP1_VERSION_NEW}"-enchant \
-        php"${PHP1_VERSION_NEW}"-xmlrpc php"${PHP1_VERSION_NEW}"-tidy php"${PHP1_VERSION_NEW}"-opcache php"${PHP1_VERSION_NEW}"-cli \
-        php"${PHP1_VERSION_NEW}"-dev php"${PHP1_VERSION_NEW}"-imagick php"${PHP1_VERSION_NEW}"-sqlite3
+    # 1. Cai dat cac goi cot loi
+    apt -y install php"${PHP1_VERSION_NEW}" php"${PHP1_VERSION_NEW}"-fpm php"${PHP1_VERSION_NEW}"-cli php"${PHP1_VERSION_NEW}"-common \
+        php"${PHP1_VERSION_NEW}"-mysql php"${PHP1_VERSION_NEW}"-gd php"${PHP1_VERSION_NEW}"-xml \
+        php"${PHP1_VERSION_NEW}"-mbstring php"${PHP1_VERSION_NEW}"-curl php"${PHP1_VERSION_NEW}"-zip \
+        php"${PHP1_VERSION_NEW}"-soap php"${PHP1_VERSION_NEW}"-bcmath php"${PHP1_VERSION_NEW}"-intl \
+        php"${PHP1_VERSION_NEW}"-opcache php"${PHP1_VERSION_NEW}"-dev php"${PHP1_VERSION_NEW}"-sqlite3 \
+        php"${PHP1_VERSION_NEW}"-gmp php"${PHP1_VERSION_NEW}"-ldap
+
+    # 2. Cai dat cac extension bo sung
+    apt -y install php"${PHP1_VERSION_NEW}"-imagick php"${PHP1_VERSION_NEW}"-snmp \
+        php"${PHP1_VERSION_NEW}"-pspell php"${PHP1_VERSION_NEW}"-imap php"${PHP1_VERSION_NEW}"-enchant \
+        php"${PHP1_VERSION_NEW}"-xmlrpc php"${PHP1_VERSION_NEW}"-tidy 2>/dev/null || true
 
     # Tu PHP 8.0 tro len, json da tich hop san, khong con goi rieng
     if [[ "${PHP1_VERSION_NEW}" == 5.* || "${PHP1_VERSION_NEW}" == 7.* ]]; then
-        apt -y install php"${PHP1_VERSION_NEW}"-json
+        apt -y install php"${PHP1_VERSION_NEW}"-json 2>/dev/null || true
     fi
 
     if [ "${PHP1_VERSION_NEW}" == "5.6" ]; then
-        apt -y install php5.6-mcrypt
+        apt -y install php5.6-mcrypt 2>/dev/null || true
     fi
 
     php1_service_file_1="/usr/lib/systemd/system/php${PHP1_VERSION_NEW}-fpm.service"

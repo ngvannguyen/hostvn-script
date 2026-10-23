@@ -57,9 +57,9 @@ remove_old_service(){
     rm -rf /etc/php
     rm -rf /var/hostvn
     rm -rf /etc/my.cnf
-    rm -rf /etc/mysql
     rm -rf /var/lib/mysql
-    rm -rf /run/mysqld
+    rm -rf /run/mysqld/* 2>/dev/null || true
+    mkdir -p /run/mysqld
     rm -rf /etc/fail2ban
     rm -rf /usr/share/nginx
     rm -rf /usr/share/nginx_module/
@@ -170,10 +170,8 @@ download_script(){
 
 welcome
 if [[ " ${LIST_OS_VER_SUPPORT[*]} " == *" ${OS_VER} "* ]]; then
-    if [ "${OS_VER}" == "26.04" ]; then
-        printf "${RED}%s${NC}\n" "Luu y: Ubuntu 26.04 dang o che do thu nghiem (experimental)."
-        printf "${RED}%s${NC}\n" "Script se su dung kho goi PHP packages.sury.org cho Ubuntu 26.04."
-        sleep 3
+    if [ "${OS_VER}" == "26.04" ] || [ "${OS_VER}" == "24.04" ]; then
+        echo "Phat hien Ubuntu ${OS_VER}. Script ho tro day du kho goi Sury PHP va MariaDB."
     fi
     remove_old_service
     install_requirement

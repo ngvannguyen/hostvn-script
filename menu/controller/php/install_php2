@@ -77,18 +77,27 @@ _check_duplicate_php(){
 }
 
 _install_php(){
-    apt -y install php"${PHP2_VERSION}" php"${PHP2_VERSION}"-fpm php"${PHP2_VERSION}"-ldap php"${PHP2_VERSION}"-zip \
-        php"${PHP2_VERSION}"-cli php"${PHP2_VERSION}"-mysql php"${PHP2_VERSION}"-gd php"${PHP2_VERSION}"-xml \
-        php"${PHP2_VERSION}"-mbstring php"${PHP2_VERSION}"-common php"${PHP2_VERSION}"-soap \
-        php"${PHP2_VERSION}"-curl php"${PHP2_VERSION}"-bcmath php"${PHP2_VERSION}"-snmp php"${PHP2_VERSION}"-pspell \
-        php"${PHP2_VERSION}"-gmp php"${PHP2_VERSION}"-intl php"${PHP2_VERSION}"-imap php"${PHP2_VERSION}"-enchant \
-        php"${PHP2_VERSION}"-xmlrpc php"${PHP2_VERSION}"-tidy php"${PHP2_VERSION}"-opcache php"${PHP2_VERSION}"-cli \
-        php"${PHP2_VERSION}"-dev php"${PHP2_VERSION}"-imagick php"${PHP2_VERSION}"-sqlite3
+    # 1. Cai dat cac goi cot loi
+    apt -y install php"${PHP2_VERSION}" php"${PHP2_VERSION}"-fpm php"${PHP2_VERSION}"-cli php"${PHP2_VERSION}"-common \
+        php"${PHP2_VERSION}"-mysql php"${PHP2_VERSION}"-gd php"${PHP2_VERSION}"-xml \
+        php"${PHP2_VERSION}"-mbstring php"${PHP2_VERSION}"-curl php"${PHP2_VERSION}"-zip \
+        php"${PHP2_VERSION}"-soap php"${PHP2_VERSION}"-bcmath php"${PHP2_VERSION}"-intl \
+        php"${PHP2_VERSION}"-opcache php"${PHP2_VERSION}"-dev php"${PHP2_VERSION}"-sqlite3 \
+        php"${PHP2_VERSION}"-gmp php"${PHP2_VERSION}"-ldap
 
-        # Tu PHP 8.0 tro len, json da tich hop san, khong con goi rieng
-        if [[ "${PHP2_VERSION}" == 5.* || "${PHP2_VERSION}" == 7.* ]]; then
-            apt -y install php"${PHP2_VERSION}"-json
-        fi
+    # 2. Cai dat cac extension bo sung
+    apt -y install php"${PHP2_VERSION}"-imagick php"${PHP2_VERSION}"-snmp \
+        php"${PHP2_VERSION}"-pspell php"${PHP2_VERSION}"-imap php"${PHP2_VERSION}"-enchant \
+        php"${PHP2_VERSION}"-xmlrpc php"${PHP2_VERSION}"-tidy 2>/dev/null || true
+
+    # Tu PHP 8.0 tro len, json da tich hop san, khong con goi rieng
+    if [[ "${PHP2_VERSION}" == 5.* || "${PHP2_VERSION}" == 7.* ]]; then
+        apt -y install php"${PHP2_VERSION}"-json 2>/dev/null || true
+    fi
+
+    if [ "${PHP2_VERSION}" == "5.6" ]; then
+        apt -y install php5.6-mcrypt 2>/dev/null || true
+    fi
 
         php2_service_file_1="/usr/lib/systemd/system/php${PHP2_VERSION}-fpm.service"
         if [ -f "${php2_service_file_1}" ]; then
