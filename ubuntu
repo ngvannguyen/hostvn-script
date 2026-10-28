@@ -49,6 +49,8 @@ apt autoremove -y
 
 # Remove unnecessary services
 remove_old_service(){
+    apt-mark unhold nginx nginx-common nginx-core nginx-full 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/sources.list.d/nginx.sources /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || true
     apt-get -y remove mysql* mariadb* php* apache2* postfix* nginx* fail2ban
     rm -rf /etc/nginx/nginx.conf /etc/nginx/alias /etc/nginx/rewrite /etc/nginx/ssl /etc/nginx/wordpress
     rm -rf /etc/nginx/apps /etc/nginx/extra /etc/nginx/redirect /etc/nginx/rocket-nginx

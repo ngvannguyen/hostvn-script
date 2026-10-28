@@ -22,28 +22,61 @@ nginx_status=$(pgrep -x nginx >/dev/null && printf "%s\n" "${GREEN}Active${NC}" 
 # (libpcre3/OpenSSL 1.1.1 da bi go khoi Ubuntu 24.04+)
 _build_nginx(){
     local NGINX_BUILD_VERSION="$1"
+    if [ -z "${NGINX_BUILD_VERSION}" ]; then
+        printf "%s\n" "${RED}Chua xac dinh phien ban Nginx can build.${NC}"
+        return 1
+    fi
+
     MODULE_PATH="/usr/share/nginx_module"
     mkdir -p "${MODULE_PATH}"
     apt-get install build-essential zlib1g-dev libpcre2-dev libssl-dev libbrotli-dev unzip uuid-dev git -y
-    ngx_cache_purge_version=$(curl -s "${UPDATE_LINK}"/version | grep "ngx_cache_purge_version=" | cut -f2 -d'=')
-    more_clear_headers_v=$(curl -s "${UPDATE_LINK}"/version | grep "more_clear_headers_v=" | cut -f2 -d'=')
-    nginx_module_vts_v=$(curl -s "${UPDATE_LINK}"/version | grep "nginx_module_vts_v=" | cut -f2 -d'=')
 
-    cd "${MODULE_PATH}" || exit
+    # Lay version module: uu tien /var/hostvn/version, fallback remote, cuoi cung la gia tri mac dinh on dinh
+    local ngx_cache_purge_version more_clear_headers_v nginx_module_vts_v
+    if [ -f "/var/hostvn/version" ]; then
+        ngx_cache_purge_version=$(grep "^ngx_cache_purge_version=" /var/hostvn/version | cut -f2 -d'=')
+        more_clear_headers_v=$(grep "^more_clear_headers_v=" /var/hostvn/version | cut -f2 -d'=')
+        nginx_module_vts_v=$(grep "^nginx_module_vts_v=" /var/hostvn/version | cut -f2 -d'=')
+    fi
+    if [ -z "${ngx_cache_purge_version}" ]; then
+        ngx_cache_purge_version=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^ngx_cache_purge_version=" | cut -f2 -d'=')
+    fi
+    if [ -z "${more_clear_headers_v}" ]; then
+        more_clear_headers_v=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^more_clear_headers_v=" | cut -f2 -d'=')
+    fi
+    if [ -z "${nginx_module_vts_v}" ]; then
+        nginx_module_vts_v=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_module_vts_v=" | cut -f2 -d'=')
+    fi
 
+    ngx_cache_purge_version="${ngx_cache_purge_version:-2.5.6}"
+    more_clear_headers_v="${more_clear_headers_v:-0.40}"
+    nginx_module_vts_v="${nginx_module_vts_v:-0.2.5}"
+
+    cd "${MODULE_PATH}" || return 1
     rm -rf "${MODULE_PATH:?}"/*
 
-    wget -O- https://nginx.org/download/nginx-"${NGINX_BUILD_VERSION}".tar.gz | tar -xz
-    # Fork nginx-modules/ngx_cache_purge tuong thich nginx moi (FRiCKLE goc da ngung phat trien)
-    wget -O- https://github.com/nginx-modules/ngx_cache_purge/archive/refs/tags/"${ngx_cache_purge_version}".tar.gz | tar -xz
-    wget -O- https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v"${more_clear_headers_v}".tar.gz | tar -xz
-    wget -O- https://github.com/vozlt/nginx-module-vts/archive/refs/tags/v"${nginx_module_vts_v}".tar.gz | tar -xz
-    git clone --depth 1 https://github.com/google/ngx_brotli
-    cd ngx_brotli || exit
-    git submodule update --init
+    printf "%s\n" "${GREEN}Dang tai ma nguon Nginx ${NGINX_BUILD_VERSION} va cac module...${NC}"
+    if ! wget -qO- "https://nginx.org/download/nginx-${NGINX_BUILD_VERSION}.tar.gz" | tar -xz; then
+        printf "%s\n" "${RED}Khong tai duoc Nginx phien ban ${NGINX_BUILD_VERSION}. Vui long kiem tra lai phien ban.${NC}"
+        return 1
+    fi
+    if [ ! -d "${MODULE_PATH}/nginx-${NGINX_BUILD_VERSION}" ]; then
+        printf "%s\n" "${RED}Giai nen Nginx that bai.${NC}"
+        return 1
+    fi
 
-    service nginx stop
-    cd "${MODULE_PATH}"/nginx-"${NGINX_BUILD_VERSION}"/ || exit
+    # Fork nginx-modules/ngx_cache_purge tuong thich nginx moi (FRiCKLE goc da ngung phat trien)
+    wget -qO- "https://github.com/nginx-modules/ngx_cache_purge/archive/refs/tags/${ngx_cache_purge_version}.tar.gz" | tar -xz || return 1
+    wget -qO- "https://github.com/openresty/headers-more-nginx-module/archive/refs/tags/v${more_clear_headers_v}.tar.gz" | tar -xz || return 1
+    wget -qO- "https://github.com/vozlt/nginx-module-vts/archive/refs/tags/v${nginx_module_vts_v}.tar.gz" | tar -xz || return 1
+    if ! git clone --depth 1 https://github.com/google/ngx_brotli; then
+        printf "%s\n" "${RED}Clone ngx_brotli that bai.${NC}"
+        return 1
+    fi
+    (cd ngx_brotli && git submodule update --init) || return 1
+
+    # Khong dung "service nginx stop" truoc khi build de web khong bi downtime trong luc compile!
+    cd "${MODULE_PATH}/nginx-${NGINX_BUILD_VERSION}" || return 1
     ./configure \
         "--user=nginx" \
         "--group=nginx" \
@@ -69,7 +102,30 @@ _build_nginx(){
         "--add-module=../nginx-module-vts-${nginx_module_vts_v}" \
         "--with-cc-opt='-D FD_SETSIZE=32768'"
 
-    make -j"$(nproc)" && make install
+    printf "%s\n" "${GREEN}Dang bien dich Nginx ${NGINX_BUILD_VERSION}... (qua trinh mat 1-3 phut)${NC}"
+    if ! make -j"$(nproc)"; then
+        printf "%s\n" "${RED}Bien dich Nginx that bai! He thong giu nguyen ban Nginx cu dang chay.${NC}"
+        return 1
+    fi
+
+    # Sao luu binary cu phong truong hop can rollback
+    [ -f /usr/sbin/nginx ] && cp -f /usr/sbin/nginx /usr/sbin/nginx.backup
+
+    make install
+
+    if [ ! -x "/usr/sbin/nginx" ]; then
+        printf "%s\n" "${RED}Khong tim thay /usr/sbin/nginx sau khi cai dat. Dang khoi phuc ban cu...${NC}"
+        [ -f /usr/sbin/nginx.backup ] && cp -f /usr/sbin/nginx.backup /usr/sbin/nginx
+        return 1
+    fi
+
+    # Khoa goi APT de apt upgrade he thong khong bao gio de binary bang ban Ubuntu/nginx.org (thieu module)
+    apt-mark hold nginx nginx-common nginx-core nginx-full 2>/dev/null || true
+    # Xoa bo repo nginx deb ngoai neu co de tranh xung dot va loi GPG/apt update
+    rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/sources.list.d/nginx.sources 2>/dev/null || true
+
+    rm -f /usr/sbin/nginx.backup
+    return 0
 }
 
 printf "%s=============================%s\n" "${GREEN}" "${NC}"
@@ -121,33 +177,87 @@ while [ "${CHOICE}" != "0" ]; do
     3)
         clear
         NGINX_CURRENT_VERSION=$(nginx -v 2>&1 | grep -o '[0-9.]*$')
-        NGINX_NEW_VERSION=$(curl -s "${UPDATE_LINK}"/version | grep "nginx_version=" | cut -f2 -d'=')
-        if [[ -n "$NGINX_NEW_VERSION" && "$NGINX_NEW_VERSION" != "$NGINX_CURRENT_VERSION" ]]; then
-            _build_nginx "${NGINX_NEW_VERSION}"
-            if nginx -t; then
-                systemctl restart nginx
-                clear
-                printf "%s\n" "${GREEN}Update Nginx successful.${NC}"
+        NGINX_NEW_VERSION=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_version=" | cut -f2 -d'=')
+        [ -z "${NGINX_NEW_VERSION}" ] && [ -f "/var/hostvn/version" ] && NGINX_NEW_VERSION=$(grep "^nginx_version=" /var/hostvn/version | cut -f2 -d'=')
+        NGINX_NEW_VERSION="${NGINX_NEW_VERSION:-1.30.4}"
+
+        printf "%s==================================================%s\n" "${GREEN}" "${NC}"
+        printf "%s                   Update Nginx                   %s\n" "${GREEN}" "${NC}"
+        printf "%s==================================================%s\n" "${GREEN}" "${NC}"
+        printf "Phien ban Nginx hien tai: %s\n" "${GREEN}${NGINX_CURRENT_VERSION}${NC}"
+        printf "Phien ban Nginx mac dinh: %s\n" "${GREEN}${NGINX_NEW_VERSION}${NC}"
+        printf "%s==================================================%s\n" "${GREEN}" "${NC}"
+        printf "1. Nang cap len phien ban mac dinh (%s)\n" "${NGINX_NEW_VERSION}"
+        printf "2. Nhap phien ban Nginx tuy chon (VD: 1.26.3, 1.27.4, 1.30.4)\n"
+        printf "0. Quay lai\n"
+        printf "%s==================================================%s\n" "${GREEN}" "${NC}"
+        read -r -p "Nhap lua chon cua ban [1 - 2, 0 = Huy]: " NGINX_UP_CHOICE
+
+        TARGET_NGINX_VER=""
+        case ${NGINX_UP_CHOICE} in
+        1)
+            TARGET_NGINX_VER="${NGINX_NEW_VERSION}"
+            ;;
+        2)
+            read -r -p "Nhap phien ban Nginx muon cai dat: " USER_CUSTOM_VER
+            if [[ "${USER_CUSTOM_VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                TARGET_NGINX_VER="${USER_CUSTOM_VER}"
             else
                 clear
-                nginx -t
-                printf "%s\n" "${RED}${lang_nginx_config_error}${NC}"
+                printf "%s\n" "${RED}Dinh dang phien ban khong hop le (VD hop le: 1.26.3, 1.30.4).${NC}"
+                sleep 2
+                lemp_nginx
+                continue
             fi
-        else
-            printf "%s\n" "${RED}Khong tim thay phien ban Nginx moi${NC}"
+            ;;
+        0)
+            clear
+            lemp_nginx
+            continue
+            ;;
+        *)
+            clear
+            printf "%s\n" "${RED}Lua chon khong chinh xac.${NC}"
+            sleep 1
+            lemp_nginx
+            continue
+            ;;
+        esac
+
+        if [ -n "${TARGET_NGINX_VER}" ]; then
+            clear
+            if _build_nginx "${TARGET_NGINX_VER}"; then
+                if nginx -t; then
+                    systemctl restart nginx
+                    clear
+                    printf "%s\n" "${GREEN}Update Nginx len ${TARGET_NGINX_VER} thanh cong!${NC}"
+                else
+                    clear
+                    nginx -t
+                    printf "%s\n" "${RED}${lang_nginx_config_error}${NC}"
+                fi
+            else
+                printf "%s\n" "${RED}Update Nginx that bai.${NC}"
+            fi
+            sleep 2
         fi
 
         lemp_nginx
         ;;
     4)
         clear
-        NGINX_VERSION=$(curl -s "${UPDATE_LINK}"/version | grep "nginx_version=" | cut -f2 -d'=')
-        _build_nginx "${NGINX_VERSION}"
+        NGINX_CURRENT_VERSION=$(nginx -v 2>&1 | grep -o '[0-9.]*$')
+        NGINX_VERSION=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_version=" | cut -f2 -d'=')
+        [ -z "${NGINX_VERSION}" ] && [ -f "/var/hostvn/version" ] && NGINX_VERSION=$(grep "^nginx_version=" /var/hostvn/version | cut -f2 -d'=')
+        NGINX_BUILD_TARGET="${NGINX_CURRENT_VERSION:-${NGINX_VERSION:-1.30.4}}"
 
-        CPU_CORES=$(grep -c "processor" /proc/cpuinfo)
-        MAX_CLIENT=$((CPU_CORES * 1024))
-        mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
-        cat >>"/etc/nginx/nginx.conf" <<EONGINXCONF
+        printf "%s\n" "${GREEN}Bat dau Rebuild Nginx ${NGINX_BUILD_TARGET}...${NC}"
+        if _build_nginx "${NGINX_BUILD_TARGET}"; then
+            # Chi tao nginx.conf neu file chua ton tai (tranh xoa mat cau hinh tuy bien cua user)
+            if [ ! -f "/etc/nginx/nginx.conf" ]; then
+                CPU_CORES=$(grep -c "processor" /proc/cpuinfo)
+                MAX_CLIENT=$((CPU_CORES * 1024))
+                cat >"/etc/nginx/nginx.conf" <<EONGINXCONF
 user nginx;
 worker_processes auto;
 worker_rlimit_nofile 260000;
@@ -231,16 +341,21 @@ http {
     include /etc/nginx/redirect/*.conf;
 }
 EONGINXCONF
+            fi
 
-        if nginx -t; then
-            systemctl restart nginx
-            clear
-            printf "%s\n" "${GREEN}Rebuild Nginx successful.${NC}"
+            if nginx -t; then
+                systemctl restart nginx
+                clear
+                printf "%s\n" "${GREEN}Rebuild Nginx successful.${NC}"
+            else
+                clear
+                nginx -t
+                printf "%s\n" "${RED}${lang_nginx_config_error}${NC}"
+            fi
         else
-            clear
-            nginx -t
-            printf "%s\n" "${RED}${lang_nginx_config_error}${NC}"
+            printf "%s\n" "${RED}Rebuild Nginx that bai.${NC}"
         fi
+        sleep 2
         lemp_nginx
         ;;
     0)

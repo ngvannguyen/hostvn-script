@@ -362,6 +362,11 @@ install_nginx(){
         exit 1
     fi
 
+    # Khoa goi APT de apt upgrade khong de binary tu bien dich bang goi mac dinh (thieu module brotli, headers-more, vts...)
+    apt-mark hold nginx nginx-common nginx-core nginx-full 2>/dev/null || true
+    # Xoa bo repo nginx deb ngoai neu co de tranh xung dot va loi GPG/apt update
+    rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/sources.list.d/nginx.sources 2>/dev/null || true
+
     if [[ -d "/usr/lib/nginx/modules" && ! -d "/etc/nginx/modules" ]]; then
         ln -s /usr/lib/nginx/modules /etc/nginx/modules
     fi
