@@ -45,6 +45,9 @@ do
             fi
             rm -rf /usr/share/nginx/auth/.htpasswd
             htpasswd -b -c /usr/share/nginx/auth/.htpasswd admin "${admin_new_pwd}"
+            chown -R nginx:nginx /usr/share/nginx/auth
+            chmod 750 /usr/share/nginx/auth
+            chmod 640 /usr/share/nginx/auth/.htpasswd
             sed -i '/admin_pwd=/d' "${FILE_INFO}"
             echo "admin_pwd=${admin_new_pwd}" >> "${FILE_INFO}"
             clear

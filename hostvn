@@ -1138,6 +1138,7 @@ http {
 
     # Custom Response Headers
     more_set_headers 'Server: GITHUB.COM';
+    more_set_headers 'X-Frame-Options           "SAMEORIGIN" always';
     more_set_headers 'X-Content-Type-Options    "nosniff" always';
     more_set_headers 'X-XSS-Protection          "1; mode=block" always';
     more_set_headers 'Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always';
@@ -2771,6 +2772,8 @@ gen_htpasswd() {
     htpasswd -b -c ${USR_DIR}/nginx/auth/.htpasswd admin "${ADMIN_TOOL_PWD}"
     chown -R nginx:nginx "${USR_DIR}"/nginx/auth
     chown -R nginx:nginx ${USR_DIR}/nginx/auth/.htpasswd
+    chmod 750 "${USR_DIR}"/nginx/auth
+    chmod 640 "${USR_DIR}"/nginx/auth/.htpasswd
 }
 
 ############################################
@@ -2824,10 +2827,7 @@ install_fail2ban() {
         rm -rf /etc/fail2ban/jail.d/defaults-debian.conf
     fi
 
-    ssh_port="ssh"
-    if [[ "$prompt_ssh" =~ ^([yY]) ]]; then
-        ssh_port=8282
-    fi
+    ssh_port="${SSH_PORT:-ssh}"
 
     mv /etc/fail2ban/jail.local /etc/fail2ban/jail.local."$(date +%Y-%m-%d)"
 
@@ -3276,7 +3276,7 @@ END
 enabled  = true
 filter   = nginx-http-auth
 port     = ${RANDOM_ADMIN_PORT}
-logpath  = /var/log/nginx/error.log;
+logpath  = /var/log/nginx/error.log
 maxretry = 5
 bantime  = 86400
 END

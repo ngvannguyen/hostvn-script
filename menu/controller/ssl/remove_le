@@ -57,7 +57,8 @@ _remove_ssl_cert(){
     sed -i '/ssl_certificate_key/d' "${VHOST_DIR}"/"${domain}".conf
     sed -i "/listen 443/a ssl_certificate /etc/nginx/ssl/server/server.crt;" "${VHOST_DIR}"/"${domain}".conf
     sed -i "/listen 443/a ssl_certificate_key /etc/nginx/ssl/server/server.key;" "${VHOST_DIR}"/"${domain}".conf
-    sed -i "/listen 443/a return 404;" "${VHOST_DIR}"/"${domain}".conf
+    sed -i "/listen 443/a\\    #error_page 404 /hvn_404.html;" "${VHOST_DIR}"/"${domain}".conf
+    sed -i "/listen 443/a\\    # return 404;" "${VHOST_DIR}"/"${domain}".conf
 
     if nginx -t; then
         _restart_service
