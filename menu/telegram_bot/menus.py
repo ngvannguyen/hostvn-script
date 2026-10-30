@@ -374,10 +374,11 @@ def fw_menu() -> InlineKeyboardMarkup:
 
 
 def php_menu() -> InlineKeyboardMarkup:
-    """Mirror lemp_php (10 muc)."""
+    """Mirror lemp_php (11 muc)."""
     return rows_menu([
         [(f"{C.E['info']} php.ini settings", "a|php_info")],
-        [(f"{C.E['refresh']} Restart PHP-FPM", "a|php_restart")],
+        [(f"{C.E['refresh']} Restart PHP-FPM", "a|php_restart"),
+         (f"{C.E['upd']} Update PHP", "pp|upd")],
         [("⚙️ Cấu hình tham số PHP", "a|php_params")],
         [("🔀 Đổi PHP mặc định", "a|php_default"),
          ("2️⃣ PHP thứ hai", "a|php_second")],

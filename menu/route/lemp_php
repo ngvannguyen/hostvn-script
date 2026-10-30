@@ -39,6 +39,7 @@ while [ "${CHOICE}" != "0" ]; do
     printf "%s8. Change PHP Process Manager type%s\n" "${GREEN}" "${NC}"
     printf "%s9. On/Off allow_url_fopen%s\n" "${GREEN}" "${NC}"
     printf "%s10. On/Off proc_close/proc_open%s\n" "${GREEN}" "${NC}"
+    printf "%s11. Update PHP%s\n" "${GREEN}" "${NC}"
     printf "%s====================================%s\n" "${GREEN}" "${NC}"
     read -r -p " ${SELECT_OPTION} " CHOICE
     if [ -z "${CHOICE}" ]; then
@@ -90,6 +91,10 @@ while [ "${CHOICE}" != "0" ]; do
     10)
         clear
         lemp_php_allow_proc_close
+        ;;
+    11)
+        clear
+        lemp_update_php
         ;;
     0)
         clear

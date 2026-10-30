@@ -1,0 +1,137 @@
+#!/bin/bash
+
+######################################################################
+#           Auto Install & Optimize LEMP Stack on Ubuntu             #
+#                                                                    #
+#                Author: Sanvv - HOSTVN Technical                    #
+#                  Website: https://hostvn.vn                        #
+#                                                                    #
+#              Please do not remove copyright. Thank!                #
+#  Please do not copy under any circumstance for commercial reason!  #
+######################################################################
+
+source /var/hostvn/menu/validate/rule
+source /var/hostvn/menu/helpers/function
+
+_set_var(){
+    PHP1_VERSION=$(grep -w "php1_version" "${FILE_INFO}" | cut -f2 -d'=')
+    PHP2_RELEASE=$(grep -w "php2_release" "${FILE_INFO}" | cut -f2 -d'=')
+    PHP2_VERSION=""
+    if [ "${PHP2_RELEASE}" == "yes" ]; then
+        PHP2_VERSION=$(grep -w "php2_version" "${FILE_INFO}" | cut -f2 -d'=')
+    fi
+
+    INSTALLED_PHPS=()
+    if [ -n "${PHP1_VERSION}" ]; then
+        INSTALLED_PHPS+=("${PHP1_VERSION}")
+    fi
+    if [ "${PHP2_RELEASE}" == "yes" ] && [ -n "${PHP2_VERSION}" ]; then
+        INSTALLED_PHPS+=("${PHP2_VERSION}")
+    fi
+}
+
+_select_php_update(){
+    TARGET_PHP=""
+    while true; do
+        printf "%s\n" "${GREEN}==================================${NC}"
+        printf "%s\n" "${GREEN}   Chon phien ban PHP can update  ${NC}"
+        printf "%s\n" "${GREEN}==================================${NC}"
+        local i=1
+        for ver in "${INSTALLED_PHPS[@]}"; do
+            local full_v
+            full_v=$(php"${ver}" -r 'echo PHP_VERSION;' 2>/dev/null || echo "${ver}")
+            printf "%s\n" "${GREEN}${i}. PHP ${ver} (Hien tai: ${full_v})${NC}"
+            i=$((i + 1))
+        done
+        printf "%s\n" "${GREEN}==================================${NC}"
+        read -r -p " ${SELECT_OPTION} " choice || break
+
+        if [ "${choice}" == "0" ]; then
+            TARGET_PHP="0"
+            break
+        elif [[ "${choice}" =~ ^[0-9]+$ ]] && [ "${choice}" -ge 1 ] && [ "${choice}" -le "${#INSTALLED_PHPS[@]}" ]; then
+            TARGET_PHP="${INSTALLED_PHPS[$((choice - 1))]}"
+            break
+        else
+            clear
+            printf "%s\n" "${RED}${WRONG_OPTION}${NC}"
+        fi
+    done
+}
+
+_confirm_update_php(){
+    while true; do
+        read -r -p "Ban co muon cap nhat PHP ${TARGET_PHP} len ban va moi nhat khong ? (y/n) " prompt_update_php || break
+        echo
+        if [[ "${prompt_update_php}" =~ ^([yY])$ || "${prompt_update_php}" =~ ^([nN])$ ]]; then
+            break
+        else
+            printf "%s\n" "${RED}Gia tri ban nhap khong chinh xac. Vui long nhap lai.${NC}"
+        fi
+    done
+}
+
+_do_update_php(){
+    local old_full new_full
+    old_full=$(php"${TARGET_PHP}" -r 'echo PHP_VERSION;' 2>/dev/null || echo "${TARGET_PHP}")
+
+    printf "%s\n" "${GREEN}Dang cap nhat danh sach goi va nang cap PHP ${TARGET_PHP}...${NC}"
+    apt-get update -y
+
+    if ! DEBIAN_FRONTEND=noninteractive apt-get -y \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        --only-upgrade install "php${TARGET_PHP}*"; then
+        clear
+        printf "%s\n" "${RED}Cap nhat PHP ${TARGET_PHP} that bai. Vui long kiem tra lai ket noi hoac repo apt.${NC}"
+        return 1
+    fi
+
+    for svc_file in "/usr/lib/systemd/system/php${TARGET_PHP}-fpm.service" "/lib/systemd/system/php${TARGET_PHP}-fpm.service"; do
+        if [ -f "${svc_file}" ] && ! grep -q "LimitNOFILE=65535" "${svc_file}"; then
+            sed -i '/ExecReload=/a LimitNOFILE=65535' "${svc_file}"
+            sed -i '/ExecReload=/a LimitMEMLOCK=infinity' "${svc_file}"
+            sed -i '/LimitNOFILE=65535/a PrivateTmp=true' "${svc_file}"
+            sed -i '/PrivateTmp=true/a ProtectKernelModules=true' "${svc_file}"
+            sed -i '/ProtectKernelModules=true/a ProtectKernelTunables=true' "${svc_file}"
+            sed -i '/ProtectKernelTunables=true/a ProtectControlGroups=true' "${svc_file}"
+            sed -i '/ProtectControlGroups=true/a RestrictRealtime=true' "${svc_file}"
+            sed -i '/RestrictRealtime=true/a RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX' "${svc_file}"
+        fi
+    done
+
+    systemctl daemon-reload
+    systemctl restart php"${TARGET_PHP}"-fpm
+
+    new_full=$(php"${TARGET_PHP}" -r 'echo PHP_VERSION;' 2>/dev/null || echo "${TARGET_PHP}")
+    clear
+    printf "%s\n" "${GREEN}Cap nhat PHP ${TARGET_PHP} thanh cong (${old_full} -> ${new_full}).${NC}"
+}
+
+_run(){
+    _set_var
+    if [ "${#INSTALLED_PHPS[@]}" -eq 0 ]; then
+        clear
+        printf "%s\n" "${RED}Khong tim thay phien ban PHP nao tren he thong.${NC}"
+        return
+    fi
+
+    _select_php_update
+    if [ "${TARGET_PHP}" == "0" ] || [ -z "${TARGET_PHP}" ]; then
+        clear
+        printf "%s\n" "${RED}${lang_cancel_action}${NC}"
+    else
+        _confirm_update_php
+        if [[ "${prompt_update_php}" =~ ^([yY])$ ]]; then
+            _do_update_php
+        else
+            clear
+            printf "%s\n" "${RED}${lang_cancel_action}${NC}"
+        fi
+    fi
+}
+
+prompt_update_php="n"
+TARGET_PHP=""
+_run
+lemp_php

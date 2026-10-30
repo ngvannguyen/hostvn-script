@@ -1342,6 +1342,33 @@ async def cb_pp(update, context, action, params):
     chat = _actor(update)
     if not has_feature(chat, C.F_PHP) and not has_feature(chat, C.F_LEMP):
         return await q.edit_message_text(texts.DENY, parse_mode=HTML)
+
+    if action == "upd":
+        if params:
+            if not can_write(chat):
+                return await q.edit_message_text(texts.NOTIFY_ONLY, parse_mode=HTML,
+                                                 reply_markup=menus.back_only("m|php"))
+            ver = params[0]
+            return await _progress_op(
+                update, True,
+                f"{E['upd']} <b>Đang cập nhật PHP {texts.esc(ver)}</b>…",
+                asyncio.to_thread(hostvn.php_update_one, ver),
+                lambda res: (title(E["confirm"], f"Update PHP {ver}", pre(res)),
+                             menus.back_only("m|php")),
+                est=45.0,
+                stages=[(50, f"📦 <b>Đang cài bản vá mới cho PHP {texts.esc(ver)}…</b>")])
+        return await _progress_op(
+            update, True, "⏳ <b>Đang kiểm tra phiên bản PHP…</b>",
+            asyncio.to_thread(hostvn.php_installed_versions),
+            lambda vers: (
+                title(E["php"], "Update PHP (cùng nhánh)",
+                      "Chọn phiên bản PHP muốn cập nhật bản vá:"),
+                menus.rows_menu(
+                    [[(f"{E['upd']} PHP {v} (hiện tại: {full})", f"pp|upd|{v}")]
+                     for v, full in vers],
+                    back="m|php")),
+            est=4.0)
+
     if action not in _PHP_TOGGLES:
         return
     ctl, label, needle = _PHP_TOGGLES[action]

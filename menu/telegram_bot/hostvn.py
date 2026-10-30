@@ -154,6 +154,48 @@ def php_version() -> str:
     return _cached("php_ver", 30.0, _fetch)
 
 
+def php_installed_versions() -> list[tuple[str, str]]:
+    """Danh sach cac phien ban PHP dang cai (nhanh, full_version)."""
+    vers = []
+    v1 = conf_val("php1_version")
+    if v1:
+        vers.append(v1)
+    if conf_val("php2_release") == "yes":
+        v2 = conf_val("php2_version")
+        if v2 and v2 not in vers:
+            vers.append(v2)
+    out = []
+    for v in vers:
+        full = sh(f"php{shlex.quote(v)} -r 'echo PHP_VERSION;' 2>/dev/null", 10) or v
+        out.append((v, full.strip()))
+    return out
+
+
+def php_update_one(ver: str) -> str:
+    """Cap nhat ban va cung nhanh cho MOT phien ban PHP duoc chon."""
+    if not re.match(r"^[0-9]+\.[0-9]+$", ver or ""):
+        return "Phiên bản PHP không hợp lệ."
+    old_v = sh(f"php{ver} -r 'echo PHP_VERSION;' 2>/dev/null", 10).strip() or ver
+    cmd = (
+        f"apt-get update -y >/dev/null 2>&1 && "
+        f"DEBIAN_FRONTEND=noninteractive apt-get -y "
+        f"-o Dpkg::Options::='--force-confdef' "
+        f"-o Dpkg::Options::='--force-confold' "
+        f"--only-upgrade install 'php{ver}*' 2>&1 | tail -8; "
+        f"for f in /usr/lib/systemd/system/php{ver}-fpm.service /lib/systemd/system/php{ver}-fpm.service; do "
+        f"  if [ -f \"$f\" ] && ! grep -q 'LimitNOFILE=65535' \"$f\"; then "
+        f"    sed -i '/ExecReload=/a LimitNOFILE=65535' \"$f\"; "
+        f"    sed -i '/ExecReload=/a LimitMEMLOCK=infinity' \"$f\"; "
+        f"  fi; "
+        f"done; "
+        f"systemctl daemon-reload >/dev/null 2>&1; "
+        f"_svc restart php{ver}-fpm >/dev/null 2>&1"
+    )
+    log = sh(cmd, 300, source_env=True, merge=True)
+    new_v = sh(f"php{ver} -r 'echo PHP_VERSION;' 2>/dev/null", 10).strip() or ver
+    return f"PHP {ver}: {old_v} -> {new_v}\n\n{log}"
+
+
 # --------------------------------------------------------------------------- #
 # Domain / Database
 # --------------------------------------------------------------------------- #
