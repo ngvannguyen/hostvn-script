@@ -98,7 +98,7 @@ _build_nginx(){
         "--user=nginx" \
         "--group=nginx" \
         "--prefix=/usr" \
-        "--sbin-path=/usr/sbin" \
+        "--sbin-path=/usr/sbin/nginx" \
         "--conf-path=/etc/nginx/nginx.conf" \
         "--pid-path=/var/run/nginx.pid" \
         "--http-log-path=/var/log/nginx/access_log" \
@@ -125,23 +125,46 @@ _build_nginx(){
         return 1
     fi
 
-    # Sao luu binary cu phong truong hop can rollback
-    [ -f /usr/sbin/nginx ] && cp -f /usr/sbin/nginx /usr/sbin/nginx.backup
+    # Dung mv (khong dung cp) de doi ten inode dang chay sang .backup:
+    # Neu giu nguyen file /usr/sbin/nginx dang chay, lenh cp trong make install se bi
+    # kernel chan voi loi "Text file busy" va binary van giu phien ban cu!
+    if [ -f /usr/sbin/nginx ]; then
+        mv -f /usr/sbin/nginx /usr/sbin/nginx.backup
+    fi
 
-    make install
+    if ! make install; then
+        printf "%s\n" "${RED}Loi khi chay make install! Dang khoi phuc ban Nginx cu...${NC}"
+        [ -f /usr/sbin/nginx.backup ] && mv -f /usr/sbin/nginx.backup /usr/sbin/nginx
+        return 1
+    fi
+
+    # Dam bao binary moi duoc chep dung vao /usr/sbin/nginx
+    if [ -f objs/nginx ]; then
+        cp -f objs/nginx /usr/sbin/nginx
+        chmod 755 /usr/sbin/nginx
+    fi
 
     if [ ! -x "/usr/sbin/nginx" ]; then
         printf "%s\n" "${RED}Khong tim thay /usr/sbin/nginx sau khi cai dat. Dang khoi phuc ban cu...${NC}"
-        [ -f /usr/sbin/nginx.backup ] && cp -f /usr/sbin/nginx.backup /usr/sbin/nginx
+        [ -f /usr/sbin/nginx.backup ] && mv -f /usr/sbin/nginx.backup /usr/sbin/nginx
         return 1
     fi
+
+    local INSTALLED_NGINX_VER
+    INSTALLED_NGINX_VER=$(/usr/sbin/nginx -v 2>&1 | grep -o '[0-9.]*$')
+    if [ "${INSTALLED_NGINX_VER}" != "${NGINX_BUILD_VERSION}" ]; then
+        printf "%s\n" "${RED}Loi: Binary sau khi cai (${INSTALLED_NGINX_VER}) khong khop voi phien ban ${NGINX_BUILD_VERSION}!${NC}"
+        [ -f /usr/sbin/nginx.backup ] && mv -f /usr/sbin/nginx.backup /usr/sbin/nginx
+        return 1
+    fi
+
+    rm -f /usr/sbin/nginx.old /usr/sbin/nginx.backup
 
     # Khoa goi APT de apt upgrade he thong khong bao gio de binary bang ban Ubuntu/nginx.org (thieu module)
     apt-mark hold nginx nginx-common nginx-core nginx-full 2>/dev/null || true
     # Xoa bo repo nginx deb ngoai neu co de tranh xung dot va loi GPG/apt update
     rm -f /etc/apt/sources.list.d/nginx.list /etc/apt/sources.list.d/nginx.sources 2>/dev/null || true
 
-    rm -f /usr/sbin/nginx.backup
     return 0
 }
 
