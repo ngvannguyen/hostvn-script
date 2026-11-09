@@ -1,4 +1,4 @@
-script_version=1.2.14
+script_version=1.2.15
 igbinary_version=3.2.16
 php_memcached_version=3.4.0
 php_redis_version=6.3.0
@@ -8,7 +8,7 @@ phpsysinfo_version=3.4.2
 mariadb_version=11.8
 php_version=php84
 php2_version=php82
-nginx_version=1.30.4
+nginx_version=1.30.6
 ngx_cache_purge_version=2.5.6
 more_clear_headers_v=0.40
 nginx_module_vts_v=0.2.5

@@ -18,6 +18,23 @@ nginx_v=$(
 )
 nginx_status=$(pgrep -x nginx >/dev/null && printf "%s\n" "${GREEN}Active${NC}" || printf "%s\n" "${GREEN}Inactive (Dead)${NC}")
 
+# Tu dong lay phien ban Nginx moi nhat truc tiep tu kho ma nguon nginx.org
+_detect_latest_nginx(){
+    local ver=""
+    ver=$(curl -sL --max-time 10 "https://nginx.org/download/" | grep -oE 'nginx-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' | sed 's/nginx-//;s/\.tar\.gz//' | sort -V | tail -n1)
+    if [ -z "${ver}" ]; then
+        ver=$(curl -sL --max-time 10 "https://nginx.org/en/download.html" | grep -oE 'nginx-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' | sed 's/nginx-//;s/\.tar\.gz//' | sort -V | tail -n1)
+    fi
+    if [ -z "${ver}" ]; then
+        ver=$(apt-cache policy nginx 2>/dev/null | awk '/Candidate:/ {print $2}' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+    fi
+    if [ -z "${ver}" ]; then
+        ver=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_version=" | cut -f2 -d'=')
+    fi
+    [ -z "${ver}" ] && [ -f "/var/hostvn/version" ] && ver=$(grep "^nginx_version=" /var/hostvn/version | cut -f2 -d'=')
+    echo "${ver:-${NGINX_CURRENT_VERSION:-1.30.6}}"
+}
+
 # Build Nginx tu source voi PCRE2 + OpenSSL 3 cua he thong
 # (libpcre3/OpenSSL 1.1.1 da bi go khoi Ubuntu 24.04+)
 _build_nginx(){
@@ -177,18 +194,16 @@ while [ "${CHOICE}" != "0" ]; do
     3)
         clear
         NGINX_CURRENT_VERSION=$(nginx -v 2>&1 | grep -o '[0-9.]*$')
-        NGINX_NEW_VERSION=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_version=" | cut -f2 -d'=')
-        [ -z "${NGINX_NEW_VERSION}" ] && [ -f "/var/hostvn/version" ] && NGINX_NEW_VERSION=$(grep "^nginx_version=" /var/hostvn/version | cut -f2 -d'=')
-        NGINX_NEW_VERSION="${NGINX_NEW_VERSION:-1.30.4}"
+        NGINX_NEW_VERSION=$(_detect_latest_nginx)
 
         printf "%s==================================================%s\n" "${GREEN}" "${NC}"
         printf "%s                   Update Nginx                   %s\n" "${GREEN}" "${NC}"
         printf "%s==================================================%s\n" "${GREEN}" "${NC}"
-        printf "Phien ban Nginx hien tai: %s\n" "${GREEN}${NGINX_CURRENT_VERSION}${NC}"
-        printf "Phien ban Nginx mac dinh: %s\n" "${GREEN}${NGINX_NEW_VERSION}${NC}"
+        printf "Phien ban Nginx hien tai : %s\n" "${GREEN}${NGINX_CURRENT_VERSION}${NC}"
+        printf "Phien ban Nginx moi nhat : %s\n" "${GREEN}${NGINX_NEW_VERSION}${NC}"
         printf "%s==================================================%s\n" "${GREEN}" "${NC}"
-        printf "1. Nang cap len phien ban mac dinh (%s)\n" "${NGINX_NEW_VERSION}"
-        printf "2. Nhap phien ban Nginx tuy chon (VD: 1.26.3, 1.27.4, 1.30.4)\n"
+        printf "1. Nang cap len phien ban moi nhat (%s)\n" "${NGINX_NEW_VERSION}"
+        printf "2. Nhap phien ban Nginx tuy chon (VD: 1.26.3, 1.28.0, %s)\n" "${NGINX_NEW_VERSION}"
         printf "0. Quay lai\n"
         printf "%s==================================================%s\n" "${GREEN}" "${NC}"
         read -r -p "Nhap lua chon cua ban [1 - 2, 0 = Huy]: " NGINX_UP_CHOICE
@@ -247,9 +262,8 @@ while [ "${CHOICE}" != "0" ]; do
     4)
         clear
         NGINX_CURRENT_VERSION=$(nginx -v 2>&1 | grep -o '[0-9.]*$')
-        NGINX_VERSION=$(curl -s --max-time 10 "${UPDATE_LINK}"/version | grep "^nginx_version=" | cut -f2 -d'=')
-        [ -z "${NGINX_VERSION}" ] && [ -f "/var/hostvn/version" ] && NGINX_VERSION=$(grep "^nginx_version=" /var/hostvn/version | cut -f2 -d'=')
-        NGINX_BUILD_TARGET="${NGINX_CURRENT_VERSION:-${NGINX_VERSION:-1.30.4}}"
+        NGINX_VERSION=$(_detect_latest_nginx)
+        NGINX_BUILD_TARGET="${NGINX_CURRENT_VERSION:-${NGINX_VERSION:-1.30.6}}"
 
         printf "%s\n" "${GREEN}Bat dau Rebuild Nginx ${NGINX_BUILD_TARGET}...${NC}"
         if _build_nginx "${NGINX_BUILD_TARGET}"; then

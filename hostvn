@@ -305,7 +305,8 @@ install_nginx(){
     apt autoremove -y
     MODULE_PATH="/usr/share/nginx_module"
     mkdir -p "${MODULE_PATH}"
-    NGINX_VERSION=$(get_version_value "nginx_version")
+    NGINX_VERSION=$(curl -sL --max-time 10 "https://nginx.org/download/" | grep -oE 'nginx-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' | sed 's/nginx-//;s/\.tar\.gz//' | sort -V | tail -n1)
+    [ -z "${NGINX_VERSION}" ] && NGINX_VERSION=$(get_version_value "nginx_version")
     ngx_cache_purge_version=$(get_version_value "ngx_cache_purge_version")
     more_clear_headers_v=$(get_version_value "more_clear_headers_v")
     nginx_module_vts_v=$(get_version_value "nginx_module_vts_v")
