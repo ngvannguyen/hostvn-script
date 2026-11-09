@@ -14,7 +14,7 @@ source /var/hostvn/menu/validate/rule
 source /var/hostvn/menu/helpers/function
 
 _set_var(){
-    new_v=$(curl -s "${UPDATE_LINK}"/version | grep "script_version=" | cut -f2 -d'=')
+    new_v=$(curl -s "${UPDATE_LINK}/version?t=$(date +%s)" | grep "script_version=" | cut -f2 -d'=')
     current_v=$(grep -w "script_version" "${FILE_INFO}" | cut -f2 -d'=');
 }
 
@@ -45,7 +45,7 @@ _update(){
         apt -y install dos2unix
     fi
     _cd_dir "${BASH_DIR}"
-    curl -so update "${UPDATE_LINK}/update"
+    curl -so update "${UPDATE_LINK}/update?t=$(date +%s)"
     dos2unix update
     chmod +x update
     bash update

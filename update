@@ -2,7 +2,8 @@
 
 printf "%s\n" "Dang update vui long doi...."
 UPDATE_LINK="${HOSTVN_SCRIPT_LINK:-https://ngvannguyen.github.io/hostvn-script}"
-script_version=$(curl -s "${UPDATE_LINK}/version" | grep '^script_version=' | cut -d'=' -f2)
+CACHE_BUST="t=$(date +%s)"
+script_version=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep '^script_version=' | cut -d'=' -f2)
 IPADDRESS=$(grep -w "IPADDRESS" "/var/hostvn/ipaddress" | cut -f2 -d'=')
 RAM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 
@@ -251,7 +252,7 @@ mariadb_calculation() {
 
 # Update Menu
 cd /var/hostvn
-if wget -O menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
+if wget -O menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz?${CACHE_BUST}" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
     # Bao ton venv cua telegram bot truoc khi xoa menu/
     # (venv duoc tao rieng tren VPS, KHONG co trong menu.tar.gz)
     if [ -d "/var/hostvn/menu/telegram_bot/venv" ]; then
@@ -663,16 +664,16 @@ for entry in .*.conf; do
 done
 
 MODULE_PATH="/usr/share/nginx_module"
-more_clear_headers_v=$(curl -s ${UPDATE_LINK}/version | grep "more_clear_headers_v=" | cut -f2 -d'=')
+more_clear_headers_v=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep "more_clear_headers_v=" | cut -f2 -d'=')
 
 if [[ ! -d "${MODULE_PATH}/headers-more-nginx-module-${more_clear_headers_v}" ]]; then
     # Build voi PCRE2 + OpenSSL 3 cua he thong (libpcre3/OpenSSL 1.1.1 da bi go khoi Ubuntu 24.04+)
     apt-get install build-essential zlib1g-dev libpcre2-dev libssl-dev libbrotli-dev unzip uuid-dev git -y
     service nginx stop
     mkdir -p "${MODULE_PATH}"
-    NGINX_VERSION=$(curl -s ${UPDATE_LINK}/version | grep "nginx_version=" | cut -f2 -d'=')
-    ngx_cache_purge_version=$(curl -s ${UPDATE_LINK}/version | grep "ngx_cache_purge_version=" | cut -f2 -d'=')
-    nginx_module_vts_v=$(curl -s ${UPDATE_LINK}/version | grep "nginx_module_vts_v=" | cut -f2 -d'=')
+    NGINX_VERSION=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep "nginx_version=" | cut -f2 -d'=')
+    ngx_cache_purge_version=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep "ngx_cache_purge_version=" | cut -f2 -d'=')
+    nginx_module_vts_v=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep "nginx_module_vts_v=" | cut -f2 -d'=')
 
     cd "${MODULE_PATH}" || exit
 
@@ -692,7 +693,7 @@ if [[ ! -d "${MODULE_PATH}/headers-more-nginx-module-${more_clear_headers_v}" ]]
         "--user=nginx" \
         "--group=nginx" \
         "--prefix=/usr" \
-        "--sbin-path=/usr/sbin" \
+        "--sbin-path=/usr/sbin/nginx" \
         "--conf-path=/etc/nginx/nginx.conf" \
         "--pid-path=/var/run/nginx.pid" \
         "--http-log-path=/var/log/nginx/access_log" \

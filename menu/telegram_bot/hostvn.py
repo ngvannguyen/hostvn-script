@@ -1085,13 +1085,15 @@ def script_versions() -> tuple[str, str]:
     cur = conf_val("script_version") or "?"
     link = sh("grep -m1 '^UPDATE_LINK=' /var/hostvn/menu/helpers/variable_common "
               "| cut -d'\"' -f2", 10)
-    new = sh(f"curl -s --max-time 15 {link}/version | grep '^script_version=' | cut -d= -f2", 25)
+    ts = int(time.time())
+    new = sh(f"curl -s --max-time 15 '{link}/version?t={ts}' | grep '^script_version=' | cut -d= -f2", 25)
     return cur, (new.strip() or "?")
 
 
 def run_update_scripts() -> str:
-    out = sh("cd /var/hostvn && curl -so update \"$(grep -m1 '^UPDATE_LINK=' "
-             "menu/helpers/variable_common | cut -d'\"' -f2)/update\" && "
+    ts = int(time.time())
+    out = sh(f"cd /var/hostvn && curl -so update \"$(grep -m1 '^UPDATE_LINK=' "
+             f"menu/helpers/variable_common | cut -d'\"' -f2)/update?t={ts}\" && "
              "dos2unix update >/dev/null 2>&1; chmod +x update && bash update; rm -f update",
              900, merge=True)
     tail = "\n".join(out.strip().splitlines()[-5:])
