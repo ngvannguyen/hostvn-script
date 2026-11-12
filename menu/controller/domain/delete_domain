@@ -90,6 +90,11 @@ _destroy_other() {
     fi
     if [ -f "/var/hostvn/ggdrive/${domain}" ]; then
         rm -rf /var/hostvn/ggdrive/"${domain}"
+        crontab -u root -l 2>/dev/null | grep -vE "gg_drive_one[[:space:]]+${domain}([[:space:]]|>|$)" | crontab -u root -
+    fi
+    if [ -f "/var/hostvn/onedrive/${domain}" ]; then
+        rm -rf /var/hostvn/onedrive/"${domain}"
+        crontab -u root -l 2>/dev/null | grep -vE "backup_onedrive_one[[:space:]]+${domain}([[:space:]]|>|$)" | crontab -u root -
     fi
     if [ -d "${SSL_DIR}/${domain}" ]; then
         rm -rf "${SSL_DIR}"/"${domain:?}"

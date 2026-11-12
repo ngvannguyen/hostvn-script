@@ -16,6 +16,7 @@ source /var/hostvn/menu/helpers/variable_common
 onedrive_folder_name=$(grep -w "onedrive_folder_name" "${FILE_INFO}" | cut -f2 -d'=')
 
 LOG="/var/log/rclone.log"
+TARGET_DOMAIN="$1"
 
 # Kiem tra remote onedrive co ton tai khong
 if ! rclone listremotes 2>/dev/null | grep -q "^onedrive:"; then
@@ -23,50 +24,68 @@ if ! rclone listremotes 2>/dev/null | grep -q "^onedrive:"; then
     exit 1
 fi
 
-for domains in "${BASH_DIR}"/onedrive/*; do
-    domain=$(echo "$domains" | cut -f5 -d'/')
-    if [[ -f "${USER_DIR}/.${domain}.conf" ]]; then
-        user=$(grep -w "username" "${USER_DIR}/.${domain}.conf" | cut -f2 -d'=')
-        db_name=$(grep -w "db_name" "${USER_DIR}/.${domain}.conf" 2>/dev/null | cut -f2 -d'=')
+_backup_single_domain() {
+    local domain="$1"
+    local cfg_file="${BASH_DIR}/onedrive/${domain}"
+    [ -f "${cfg_file}" ] || return 0
+    [[ -f "${USER_DIR}/.${domain}.conf" ]] || return 0
 
-        backup_dir="/home/backup/${CURRENT_DATE}/${domain}"
-        mkdir -p "${backup_dir}"
-        rm -rf "${backup_dir:?}"/*
+    local d_backup_num user db_name backup_dir
+    d_backup_num=$(grep -w '^backup_num' "${cfg_file}" 2>/dev/null | cut -f2 -d'=')
+    [ -z "${d_backup_num}" ] && d_backup_num="${backup_num}"
 
-        # Dump database (neu co)
-        if [ -n "${db_name}" ]; then
-            cd "${backup_dir}" || continue
-            mariadb-dump -uadmin -p"${mysql_pwd}" "${db_name}" 2>/dev/null | gzip > "${db_name}".sql.gz
-        fi
+    user=$(grep -w "username" "${USER_DIR}/.${domain}.conf" | cut -f2 -d'=')
+    db_name=$(grep -w "db_name" "${USER_DIR}/.${domain}.conf" 2>/dev/null | cut -f2 -d'=')
 
-        # Nen source code
-        cd /home/"${user}"/"${domain}" || continue
-        if [[ ! -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
-            cp /home/"${user}"/"${domain}"/wp-config.php /home/"${user}"/"${domain}"/public_html/wp-config.php
-        fi
-        if [ -d "/home/${user}/${domain}/public_html/storage" ]; then
-            tar -cpzf "${backup_dir}/${domain}.tar.gz" \
-                --exclude "public_html/storage/framework/cache" --exclude "public_html/storage/framework/views" public_html
-        else
-            tar -cpzf "${backup_dir}/${domain}.tar.gz" \
-                --exclude "public_html/wp-content/cache" public_html
-        fi
+    backup_dir="/home/backup/${CURRENT_DATE}/${domain}"
+    mkdir -p "${backup_dir}"
+    rm -rf "${backup_dir:?}"/*
 
-        # Upload len OneDrive - CHI xoa local khi upload thanh cong
-        if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}/${domain}" --bwlimit 30M >> "${LOG}" 2>&1; then
-            rm -rf "${backup_dir}"
-            echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong." >> "${LOG}"
-        else
-            echo "[$(date)] ERROR: ${domain} - Upload OneDrive that bai. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
-        fi
-
-        # Xoa backup cu tren OneDrive
-        rclone -q --min-age "${backup_num}"d delete "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}" >> "${LOG}" 2>&1
-        rclone -q --min-age "${backup_num}"d rmdirs "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}" >> "${LOG}" 2>&1
-
-        # Don dep wp-config.php tam
-        if [[ -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
-            rm -rf /home/"${user}"/"${domain}"/public_html/wp-config.php
-        fi
+    # Dump database (neu co)
+    if [ -n "${db_name}" ]; then
+        cd "${backup_dir}" || return 1
+        mariadb-dump -uadmin -p"${mysql_pwd}" "${db_name}" 2>/dev/null | gzip > "${db_name}".sql.gz
     fi
-done
+
+    # Nen source code
+    cd /home/"${user}"/"${domain}" || return 1
+    if [[ ! -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
+        cp /home/"${user}"/"${domain}"/wp-config.php /home/"${user}"/"${domain}"/public_html/wp-config.php
+    fi
+    if [ -d "/home/${user}/${domain}/public_html/storage" ]; then
+        tar -cpzf "${backup_dir}/${domain}.tar.gz" \
+            --exclude "public_html/storage/framework/cache" --exclude "public_html/storage/framework/views" public_html
+    else
+        tar -cpzf "${backup_dir}/${domain}.tar.gz" \
+            --exclude "public_html/wp-content/cache" public_html
+    fi
+
+    # Upload len OneDrive - CHI xoa local khi upload thanh cong
+    if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}/${domain}" --bwlimit 30M >> "${LOG}" 2>&1; then
+        rm -rf "${backup_dir}"
+        echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong." >> "${LOG}"
+    else
+        echo "[$(date)] ERROR: ${domain} - Upload OneDrive that bai. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
+    fi
+
+    # Xoa backup cu cua rieng ten mien nay tren OneDrive
+    if [[ -n "${d_backup_num}" && "${d_backup_num}" =~ ^[0-9]+$ ]]; then
+        rclone -q --min-age "${d_backup_num}"d --include "*/${domain}/**" delete "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
+        rclone -q --min-age "${d_backup_num}"d rmdirs "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
+    fi
+
+    # Don dep wp-config.php tam
+    if [[ -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
+        rm -rf /home/"${user}"/"${domain}"/public_html/wp-config.php
+    fi
+}
+
+if [ -n "${TARGET_DOMAIN}" ]; then
+    _backup_single_domain "${TARGET_DOMAIN}"
+else
+    for domains in "${BASH_DIR}"/onedrive/*; do
+        [ -f "${domains}" ] || continue
+        domain=$(basename "${domains}")
+        _backup_single_domain "${domain}"
+    done
+fi

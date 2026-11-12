@@ -54,12 +54,36 @@ _get_backed_up_domains() {
     fi
 }
 
+_format_time_label() {
+    case "$1" in
+        "@midnight") echo "Hang ngay (@midnight)" ;;
+        "@weekly")   echo "Hang tuan (@weekly)" ;;
+        "@monthly")  echo "Hang thang (@monthly)" ;;
+        "@yearly")   echo "Hang nam (@yearly)" ;;
+        *)           echo "${1:-Chua ro}" ;;
+    esac
+}
+
+_domain_cron_info() {
+    local d="$1" f="${BASH_DIR}/onedrive/${1}"
+    d_time=$(grep -w '^time' "${f}" 2>/dev/null | cut -f2 -d'=')
+    d_num=$(grep -w '^backup_num' "${f}" 2>/dev/null | cut -f2 -d'=')
+    if [ -z "${d_time}" ]; then
+        d_time=$(crontab -l 2>/dev/null | grep -E "backup_onedrive_one([[:space:]]+${d})?([[:space:]]|>|$)" | head -1 | awk '{print $1}')
+    fi
+    [ -z "${d_num}" ] && d_num=$(grep -w "backup_num" "${FILE_INFO}" 2>/dev/null | cut -f2 -d'=')
+}
+
 _select_domain_backup() {
     domain=""
     if [[ "$(ls -A "${USER_DIR}")" ]]; then
         _get_backed_up_domains
         if [ "${#backed_domains[@]}" -gt 0 ]; then
-            printf "${GREEN}Ten mien da tao backup:${NC} %s\n" "$(IFS=', '; echo "${backed_domains[*]}")"
+            printf "${GREEN}Ten mien da tao backup:${NC}\n"
+            for bd in "${backed_domains[@]}"; do
+                _domain_cron_info "${bd}"
+                printf "  - %s (%s, luu %s ngay)\n" "${bd}" "$(_format_time_label "${d_time}")" "${d_num:-?}"
+            done
             echo "----------------------------------------------"
         fi
         domains=()
@@ -91,11 +115,14 @@ _list_backed_up_domains() {
     printf "%s==============================================%s\n" "${GREEN}" "${NC}"
     printf "%s     Danh sach ten mien da tao backup         %s\n" "${GREEN}" "${NC}"
     printf "%s==============================================%s\n" "${GREEN}" "${NC}"
-    local cron_one cron_all
-    cron_one=$(crontab -l 2>/dev/null | grep -w 'backup_onedrive_one')
+    local cron_all
     cron_all=$(crontab -l 2>/dev/null | grep -w 'backup_onedrive_all')
     if [ -n "${cron_all}" ]; then
+        local all_time all_num
+        all_time=$(echo "${cron_all}" | awk '{print $1}')
+        all_num=$(grep -w "backup_num" "${FILE_INFO}" 2>/dev/null | cut -f2 -d'=')
         printf "Che do         : ${GREEN}Backup toan bo ten mien (backup_onedrive_all)${NC}\n"
+        printf "Lich chay      : ${GREEN}%s (luu %s ngay)${NC}\n" "$(_format_time_label "${all_time}")" "${all_num:-?}"
         printf "%s----------------------------------------------%s\n" "${GREEN}" "${NC}"
     fi
     _get_backed_up_domains
@@ -112,7 +139,9 @@ _list_backed_up_domains() {
 
     local i=1
     for d in "${backed_domains[@]}"; do
-        printf "${GREEN}%d.${NC} %s\n" "${i}" "${d}"
+        _domain_cron_info "${d}"
+        printf "${GREEN}%d.${NC} %-25s | Lich: %-22s | Luu: %s ngay\n" \
+            "${i}" "${d}" "$(_format_time_label "${d_time}")" "${d_num:-?}"
         i=$((i + 1))
     done
     printf "%s==============================================%s\n" "${GREEN}" "${NC}"
@@ -121,10 +150,13 @@ _list_backed_up_domains() {
         if [[ "${del_idx}" =~ ^[0-9]+$ ]] && [ "${del_idx}" -ge 1 ] && [ "${del_idx}" -le "${#backed_domains[@]}" ]; then
             local del_domain="${backed_domains[$((del_idx - 1))]}"
             rm -f "${BASH_DIR}/onedrive/${del_domain}"
+            crontab -u root -l 2>/dev/null | grep -vE "backup_onedrive_one[[:space:]]+${del_domain}([[:space:]]|>|$)" > backupOneDrive
             _get_backed_up_domains
-            if [ "${#backed_domains[@]}" -eq 0 ] && [ -n "${cron_one}" ]; then
-                crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_one' | crontab -u root -
+            if [ "${#backed_domains[@]}" -eq 0 ]; then
+                grep -v 'backup_onedrive_one' backupOneDrive > backupOneDrive.tmp && mv backupOneDrive.tmp backupOneDrive
             fi
+            crontab backupOneDrive
+            rm -f backupOneDrive
             clear
             printf "${GREEN}Da xoa %s khoi danh sach backup.${NC}\n\n" "${del_domain}"
         else
@@ -193,9 +225,6 @@ _set_backup_time() {
     else
         backup_num="${backup_num}"
     fi
-
-    sed -i '/backup_num=/d' "${FILE_INFO}"
-    echo "backup_num=${backup_num}" >>"${FILE_INFO}"
 }
 
 _delete_old_backup_cron(){
@@ -217,6 +246,8 @@ _delete_old_backup_cron(){
 
 _create_cron_backup_all() {
     _delete_old_backup_cron
+    sed -i '/backup_num=/d' "${FILE_INFO}"
+    echo "backup_num=${backup_num}" >>"${FILE_INFO}"
     crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_one' | grep -v 'backup_onedrive_all' >backupOneDrive
     echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_all >/dev/null 2>&1" >>backupOneDrive
     crontab backupOneDrive
@@ -225,8 +256,31 @@ _create_cron_backup_all() {
 
 _create_cron_backup_one() {
     _delete_old_backup_cron
-    crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_all' | grep -v 'backup_onedrive_one' >backupOneDrive
-    echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_one >/dev/null 2>&1" >> backupOneDrive
+    local legacy_line legacy_time
+    legacy_line=$(crontab -u root -l 2>/dev/null | grep -E 'backup_onedrive_one[[:space:]]+>' | head -1)
+    legacy_time=$(echo "${legacy_line}" | awk '{print $1}')
+
+    crontab -u root -l 2>/dev/null \
+        | grep -v 'backup_onedrive_all' \
+        | grep -vE 'backup_onedrive_one[[:space:]]+>' \
+        | grep -vE "backup_onedrive_one[[:space:]]+${domain}([[:space:]]|>|$)" >backupOneDrive
+
+    if [ -n "${legacy_time}" ] && [ -d "${BASH_DIR}/onedrive" ]; then
+        for f in "${BASH_DIR}"/onedrive/*; do
+            [ -f "${f}" ] || continue
+            local old_d
+            old_d=$(basename "${f}")
+            [ "${old_d}" == "${domain}" ] && continue
+            if ! grep -qE "backup_onedrive_one[[:space:]]+${old_d}([[:space:]]|>|$)" backupOneDrive 2>/dev/null; then
+                local old_t
+                old_t=$(grep -w '^time' "${f}" 2>/dev/null | cut -f2 -d'=')
+                [ -z "${old_t}" ] && old_t="${legacy_time}"
+                echo "${old_t} bash /var/hostvn/menu/cronjob/backup_onedrive_one ${old_d} >/dev/null 2>&1" >>backupOneDrive
+            fi
+        done
+    fi
+
+    echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_one ${domain} >/dev/null 2>&1" >> backupOneDrive
     crontab backupOneDrive
     rm -rf backupOneDrive
 }
@@ -248,17 +302,16 @@ _backup_one() {
                     clear
                     printf "%s\n" "${RED}Huy tao cronjob.${NC}"
                 else
-#                    sed -i '/remote/d' "${FILE_INFO}"
-#                    echo "remote=onedrive" >>"${FILE_INFO}"
                     if [ ! -d "${BASH_DIR}/onedrive" ]; then
                         mkdir -p "${BASH_DIR}/onedrive"
                     fi
-                    if [ ! -f "${BASH_DIR}/onedrive/${domain}" ]; then
-                        touch "${BASH_DIR}"/onedrive/"${domain}"
-                    fi
+                    cat > "${BASH_DIR}/onedrive/${domain}" <<EOF
+time=${time}
+backup_num=${backup_num}
+EOF
                     _create_cron_backup_one
                     clear
-                    printf "%s\n" "${GREEN}Tao cronjob thanh cong.${NC}"
+                    printf "%s\n" "${GREEN}Tao cronjob thanh cong cho ${domain} (${time}).${NC}"
                     echo ""
                 fi
             fi
