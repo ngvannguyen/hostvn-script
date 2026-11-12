@@ -26,15 +26,24 @@ _create_drive_connect(){
 }
 
 _select_type(){
-    echo "Lua chon kieu backup ?"
-    PS3='Nhap lua chon cua ban (1-4): '
-    options=("Backup theo ten mien" "Backup toan bo ten mien" "Xem danh sach ten mien da tao backup" "Huy tao cronjob")
+    echo "Lua chon thao tac cronjob backup ?"
+    PS3='Nhap lua chon cua ban (1-6): '
+    options=(
+        "Backup theo ten mien"
+        "Backup toan bo ten mien"
+        "Xem danh sach ten mien da tao backup"
+        "Doi lich backup cua ten mien (ngay/tuan/thang/nam)"
+        "Xoa ten mien khoi cron backup (khong xoa file backup)"
+        "Huy tao cronjob"
+    )
     select opt in "${options[@]}"
     do
         case $opt in
             "Backup theo ten mien") type="one"; break;;
             "Backup toan bo ten mien") type="all"; break;;
             "Xem danh sach ten mien da tao backup") type="list"; break;;
+            "Doi lich backup cua ten mien (ngay/tuan/thang/nam)") type="edit"; break;;
+            "Xoa ten mien khoi cron backup (khong xoa file backup)") type="remove"; break;;
             "Huy tao cronjob") type="0"; break;;
             *) printf "%s\n" "${RED}Ban nhap sai, vui long nhap lai.${NC}";;
         esac
@@ -149,28 +158,138 @@ _list_backed_up_domains(){
             "${i}" "${d}" "$(_format_time_label "${d_time}")" "${d_num:-?}" "${d_remote:-?}"
         i=$((i + 1))
     done
-    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
-    read -r -p "Nhap STT ten mien muon xoa khoi danh sach backup [Enter / 0 = Quay lai]: " del_idx
-    if [[ -n "${del_idx}" && "${del_idx}" != "0" ]]; then
-        if [[ "${del_idx}" =~ ^[0-9]+$ ]] && [ "${del_idx}" -ge 1 ] && [ "${del_idx}" -le "${#backed_domains[@]}" ]; then
-            local del_domain="${backed_domains[$((del_idx - 1))]}"
-            rm -f "${BASH_DIR}/ggdrive/${del_domain}"
-            crontab -u root -l 2>/dev/null | grep -vE "gg_drive_one[[:space:]]+${del_domain}([[:space:]]|>|$)" > backupgg
-            _get_backed_up_domains
-            if [ "${#backed_domains[@]}" -eq 0 ]; then
-                grep -v 'gg_drive_one' backupgg > backupgg.tmp && mv backupgg.tmp backupgg
-            fi
-            crontab backupgg
-            rm -f backupgg
-            clear
-            printf "${GREEN}Da xoa %s khoi danh sach backup.${NC}\n\n" "${del_domain}"
-        else
-            clear
-            printf "%s\n\n" "${RED}Lua chon khong chinh xac.${NC}"
-        fi
-    else
-        clear
+    printf "%s==============================================%s\n\n" "${GREEN}" "${NC}"
+}
+
+_remove_domain_from_cron(){
+    clear
+    _get_backed_up_domains
+    if [ "${#backed_domains[@]}" -eq 0 ]; then
+        printf "%s\n\n" "${RED}Chua co ten mien nao trong danh sach cron backup theo ten mien.${NC}"
+        return
     fi
+
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    printf "%s   Xoa ten mien khoi cron backup (giu file)   %s\n" "${GREEN}" "${NC}"
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    local i=1
+    for d in "${backed_domains[@]}"; do
+        _domain_cron_info "${d}"
+        printf "${GREEN}%d.${NC} %-25s | Lich: %-22s | Remote: %s\n" \
+            "${i}" "${d}" "$(_format_time_label "${d_time}")" "${d_remote:-?}"
+        i=$((i + 1))
+    done
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    read -r -p "Nhap STT ten mien muon xoa khoi cron backup [0 = Thoat]: " del_idx
+    if [[ -z "${del_idx}" || "${del_idx}" == "0" ]]; then
+        clear
+        printf "%s\n\n" "${RED}Ban da chon huy thao tac.${NC}"
+        return
+    fi
+    if ! [[ "${del_idx}" =~ ^[0-9]+$ ]] || [ "${del_idx}" -lt 1 ] || [ "${del_idx}" -gt "${#backed_domains[@]}" ]; then
+        clear
+        printf "%s\n\n" "${RED}Lua chon khong chinh xac.${NC}"
+        return
+    fi
+
+    local del_domain="${backed_domains[$((del_idx - 1))]}"
+    local legacy_line legacy_time
+    legacy_line=$(crontab -u root -l 2>/dev/null | grep -E 'gg_drive_one[[:space:]]+>' | head -1)
+    legacy_time=$(echo "${legacy_line}" | awk '{print $1}')
+
+    # Chi xoa file cau hinh lich cron cua ten mien va dong crontab, KHONG xoa file backup
+    rm -f "${BASH_DIR}/ggdrive/${del_domain}"
+
+    crontab -u root -l 2>/dev/null \
+        | grep -vE 'gg_drive_one[[:space:]]+>' \
+        | grep -vE "gg_drive_one[[:space:]]+${del_domain}([[:space:]]|>|$)" > backupgg
+
+    _get_backed_up_domains
+    if [ -n "${legacy_time}" ] && [ "${#backed_domains[@]}" -gt 0 ]; then
+        for rem_d in "${backed_domains[@]}"; do
+            if ! grep -qE "gg_drive_one[[:space:]]+${rem_d}([[:space:]]|>|$)" backupgg 2>/dev/null; then
+                local rem_t
+                rem_t=$(grep -w '^time' "${BASH_DIR}/ggdrive/${rem_d}" 2>/dev/null | cut -f2 -d'=')
+                [ -z "${rem_t}" ] && rem_t="${legacy_time}"
+                echo "${rem_t} bash /var/hostvn/menu/cronjob/gg_drive_one ${rem_d} >/dev/null 2>&1" >> backupgg
+            fi
+        done
+    fi
+
+    crontab backupgg
+    rm -f backupgg
+    clear
+    printf "${GREEN}Da xoa %s khoi cron backup. Cac file backup da luu duoc giu nguyen.${NC}\n\n" "${del_domain}"
+}
+
+_change_domain_schedule(){
+    clear
+    _get_backed_up_domains
+    if [ "${#backed_domains[@]}" -eq 0 ]; then
+        printf "%s\n\n" "${RED}Chua co ten mien nao trong danh sach cron backup de doi lich.${NC}"
+        return
+    fi
+
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    printf "%s       Doi lich backup cua ten mien           %s\n" "${GREEN}" "${NC}"
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    local i=1
+    for d in "${backed_domains[@]}"; do
+        _domain_cron_info "${d}"
+        printf "${GREEN}%d.${NC} %-25s | Hien tai: %-22s | Luu: %s ngay | Remote: %s\n" \
+            "${i}" "${d}" "$(_format_time_label "${d_time}")" "${d_num:-?}" "${d_remote:-?}"
+        i=$((i + 1))
+    done
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    read -r -p "Nhap STT ten mien muon doi lich backup [0 = Thoat]: " edit_idx
+    if [[ -z "${edit_idx}" || "${edit_idx}" == "0" ]]; then
+        clear
+        printf "%s\n\n" "${RED}Ban da chon huy thao tac.${NC}"
+        return
+    fi
+    if ! [[ "${edit_idx}" =~ ^[0-9]+$ ]] || [ "${edit_idx}" -lt 1 ] || [ "${edit_idx}" -gt "${#backed_domains[@]}" ]; then
+        clear
+        printf "%s\n\n" "${RED}Lua chon khong chinh xac.${NC}"
+        return
+    fi
+
+    domain="${backed_domains[$((edit_idx - 1))]}"
+    _domain_cron_info "${domain}"
+    remote="${d_remote}"
+    if [ -z "${remote}" ] || ! rclone listremotes 2>/dev/null | grep -q "^${remote}:"; then
+        _select_remote
+        if [ -z "${remote}" ]; then
+            clear
+            printf "%s\n\n" "${RED}Ban da huy thao tac.${NC}"
+            return
+        fi
+    fi
+
+    echo ""
+    printf "Dang doi lich cho: ${GREEN}%s${NC} (Hien tai: %s, luu %s ngay)\n" \
+        "${domain}" "$(_format_time_label "${d_time}")" "${d_num:-?}"
+    _select_time
+    if [ "${time}" == "0" ]; then
+        clear
+        printf "%s\n\n" "${RED}Huy doi lich cronjob.${NC}"
+        return
+    fi
+    _set_backup_time
+    if [[ "${backup_num}" == "0" || -z "${backup_num}" ]]; then
+        clear
+        printf "%s\n\n" "${RED}Huy doi lich cronjob.${NC}"
+        return
+    fi
+
+    cat > "${BASH_DIR}/ggdrive/${domain}" <<EOF
+remote=${remote}
+time=${time}
+backup_num=${backup_num}
+EOF
+    _create_cron_backup_one
+    clear
+    printf "${GREEN}Da cap nhat lich backup cho %s sang %s (luu %s ngay).${NC}\n\n" \
+        "${domain}" "$(_format_time_label "${time}")" "${backup_num}"
 }
 
 _select_time(){
@@ -346,6 +465,10 @@ _run(){
         printf "%s\n" "${RED}Huy tao cronjob.${NC}"
     elif [ "${type}" == "list" ]; then
         _list_backed_up_domains
+    elif [ "${type}" == "edit" ]; then
+        _change_domain_schedule
+    elif [ "${type}" == "remove" ]; then
+        _remove_domain_from_cron
     else
         _select_remote
         if [[ -z "${remote}" ]]; then
