@@ -27,17 +27,119 @@ _create_drive_connect(){
 
 _select_type(){
     echo "Lua chon kieu backup ?"
-    PS3='Nhap lua chon cua ban (1-3): '
-    options=("Backup theo ten mien" "Backup toan bo ten mien" "Huy tao cronjob")
+    PS3='Nhap lua chon cua ban (1-4): '
+    options=("Backup theo ten mien" "Backup toan bo ten mien" "Xem danh sach ten mien da tao backup" "Huy tao cronjob")
     select opt in "${options[@]}"
     do
         case $opt in
             "Backup theo ten mien") type="one"; break;;
             "Backup toan bo ten mien") type="all"; break;;
+            "Xem danh sach ten mien da tao backup") type="list"; break;;
             "Huy tao cronjob") type="0"; break;;
             *) printf "%s\n" "${RED}Ban nhap sai, vui long nhap lai.${NC}";;
         esac
     done
+}
+
+_get_backed_up_domains(){
+    backed_domains=()
+    if [ -d "${BASH_DIR}/ggdrive" ]; then
+        for f in "${BASH_DIR}"/ggdrive/*; do
+            [ -f "${f}" ] || continue
+            local d
+            d=$(basename "${f}")
+            if [ -f "${USER_DIR}/.${d}.conf" ]; then
+                backed_domains+=("${d}")
+            fi
+        done
+    fi
+}
+
+_select_domain_backup(){
+    domain=""
+    if [[ "$(ls -A "${USER_DIR}")" ]]; then
+        _get_backed_up_domains
+        if [ "${#backed_domains[@]}" -gt 0 ]; then
+            printf "${GREEN}Ten mien da tao backup:${NC} %s\n" "$(IFS=', '; echo "${backed_domains[*]}")"
+            echo "----------------------------------------------"
+        fi
+        domains=()
+        _cd_dir "${USER_DIR}"
+        for entry_domain in .*.conf; do
+            local d=${entry_domain/.}
+            d=${d//.conf}
+            if [ "${d}" != '*' ] && [ ! -f "${BASH_DIR}/ggdrive/${d}" ]; then
+                domains+=("${d}")
+            fi
+        done
+        if [ "${#domains[@]}" -eq 0 ]; then
+            ALERT=$(printf "%s\n" "${GREEN}Tat ca ten mien tren VPS deu da duoc tao backup truoc do.${NC}")
+            return
+        fi
+        echo "${LIST_DOMAIN}"
+        PS3="${INPUT_SELECT} [0 = Thoat]: "
+        select opt_domain in "${domains[@]}"
+        do
+            domain=$opt_domain
+            break
+        done
+    else
+        ALERT=$(printf "%s\n" "${RED}${EMPTY_DOMAIN}${NC}")
+    fi
+}
+
+_list_backed_up_domains(){
+    clear
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    printf "%s     Danh sach ten mien da tao backup         %s\n" "${GREEN}" "${NC}"
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    local cur_remote cron_one cron_all
+    cur_remote=$(grep -w "remote" "${FILE_INFO}" 2>/dev/null | cut -f2 -d'=')
+    cron_one=$(crontab -l 2>/dev/null | grep -w 'gg_drive_one')
+    cron_all=$(crontab -l 2>/dev/null | grep -w 'gg_drive_all')
+    if [ -n "${cur_remote}" ]; then
+        printf "Remote luu tru : ${GREEN}%s${NC}\n" "${cur_remote}"
+    fi
+    if [ -n "${cron_all}" ]; then
+        printf "Che do         : ${GREEN}Backup toan bo ten mien (gg_drive_all)${NC}\n"
+        printf "%s----------------------------------------------%s\n" "${GREEN}" "${NC}"
+    fi
+    _get_backed_up_domains
+    if [ "${#backed_domains[@]}" -eq 0 ]; then
+        if [ -z "${cron_all}" ]; then
+            printf "%s\n" "${RED}Chua co ten mien nao duoc tao backup theo ten mien.${NC}"
+        else
+            printf "%s\n" "${GREEN}Dang backup tat ca ten mien tren VPS.${NC}"
+        fi
+        printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+        echo ""
+        return
+    fi
+
+    local i=1
+    for d in "${backed_domains[@]}"; do
+        printf "${GREEN}%d.${NC} %s\n" "${i}" "${d}"
+        i=$((i + 1))
+    done
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    read -r -p "Nhap STT ten mien muon xoa khoi danh sach backup [Enter / 0 = Quay lai]: " del_idx
+    if [[ -n "${del_idx}" && "${del_idx}" != "0" ]]; then
+        if [[ "${del_idx}" =~ ^[0-9]+$ ]] && [ "${del_idx}" -ge 1 ] && [ "${del_idx}" -le "${#backed_domains[@]}" ]; then
+            local del_domain="${backed_domains[$((del_idx - 1))]}"
+            rm -f "${BASH_DIR}/ggdrive/${del_domain}"
+            _get_backed_up_domains
+            if [ "${#backed_domains[@]}" -eq 0 ] && [ -n "${cron_one}" ]; then
+                crontab -u root -l 2>/dev/null | grep -v 'gg_drive_one' | crontab -u root -
+            fi
+            clear
+            printf "${GREEN}Da xoa %s khoi danh sach backup.${NC}\n\n" "${del_domain}"
+        else
+            clear
+            printf "%s\n\n" "${RED}Lua chon khong chinh xac.${NC}"
+        fi
+    else
+        clear
+    fi
 }
 
 _select_time(){
@@ -107,29 +209,23 @@ _delete_old_backup_cron(){
 }
 
 _create_cron_backup_all(){
-    cron_all_exists=$(crontab -l | grep -w 'gg_drive_all')
-    if [ -z "${cron_all_exists}" ]; then
-        _delete_old_backup_cron
-        crontab -l > backupgg
-        echo "${time} bash /var/hostvn/menu/cronjob/gg_drive_all >/dev/null 2>&1" >> backupgg
-        crontab backupgg
-        rm -rf backupgg
-    fi
+    _delete_old_backup_cron
+    crontab -u root -l 2>/dev/null | grep -v 'gg_drive_one' | grep -v 'gg_drive_all' > backupgg
+    echo "${time} bash /var/hostvn/menu/cronjob/gg_drive_all >/dev/null 2>&1" >> backupgg
+    crontab backupgg
+    rm -rf backupgg
 }
 
 _create_cron_backup_one(){
-    cron_one_exists=$(crontab -l | grep -w 'gg_drive_one')
-    if [ -z "${cron_one_exists}" ]; then
-        _delete_old_backup_cron
-        crontab -l > backupgg
-        echo "${time} bash /var/hostvn/menu/cronjob/gg_drive_one >/dev/null 2>&1" >> backupgg
-        crontab backupgg
-        rm -rf backupgg
-    fi
+    _delete_old_backup_cron
+    crontab -u root -l 2>/dev/null | grep -v 'gg_drive_all' | grep -v 'gg_drive_one' > backupgg
+    echo "${time} bash /var/hostvn/menu/cronjob/gg_drive_one >/dev/null 2>&1" >> backupgg
+    crontab backupgg
+    rm -rf backupgg
 }
 
 _backup_one(){
-    _select_domain
+    _select_domain_backup
     if [[ -z "${domain}" && -z "${ALERT}" ]]; then
         clear
         printf "%s\n" "${RED}Ban da chon huy thao tac.${NC}"
@@ -192,8 +288,14 @@ _run(){
     if [ "${type}" == "0" ]; then
         clear
         printf "%s\n" "${RED}Huy tao cronjob.${NC}"
+    elif [ "${type}" == "list" ]; then
+        _list_backed_up_domains
     else
-        if [ "${type}" == "one" ]; then
+        _select_remote
+        if [[ -z "${remote}" ]]; then
+            clear
+            printf "%s\n" "${RED}Ban da huy thao tac.${NC}"
+        elif [ "${type}" == "one" ]; then
             _backup_one
         else
             _backup_all
@@ -207,6 +309,7 @@ backup_num=""
 domain=""
 type=""
 remote_name=""
+backed_domains=()
 
 # Kiem tra co remote Google Drive (type=drive) trong rclone.conf khong
 _has_drive_remote() {
@@ -216,13 +319,7 @@ _has_drive_remote() {
 }
 
 if _has_drive_remote; then
-    _select_remote
-    if [[ -z "${remote}" ]]; then
-        clear
-        printf "%s\n" "${RED}Ban da huy thao tac.${NC}"
-    else
-        _run
-    fi
+    _run
 else
     clear
     printf "%s\n" "${RED}Ban chua ket noi Google Drive.${NC}"

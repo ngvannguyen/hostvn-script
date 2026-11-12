@@ -15,8 +15,8 @@ source /var/hostvn/menu/helpers/function
 
 _select_type() {
     echo "Lua chon kieu backup ?"
-    PS3='Nhap lua chon cua ban (1-3): '
-    options=("Backup theo ten mien" "Backup toan bo ten mien" "Huy tao cronjob")
+    PS3='Nhap lua chon cua ban (1-4): '
+    options=("Backup theo ten mien" "Backup toan bo ten mien" "Xem danh sach ten mien da tao backup" "Huy tao cronjob")
     select opt in "${options[@]}"; do
         case $opt in
         "Backup theo ten mien")
@@ -27,6 +27,10 @@ _select_type() {
             type="all"
             break
             ;;
+        "Xem danh sach ten mien da tao backup")
+            type="list"
+            break
+            ;;
         "Huy tao cronjob")
             type="0"
             break
@@ -34,6 +38,102 @@ _select_type() {
         *) printf "%s\n" "${RED}Ban nhap sai, vui long nhap lai.${NC}" ;;
         esac
     done
+}
+
+_get_backed_up_domains() {
+    backed_domains=()
+    if [ -d "${BASH_DIR}/onedrive" ]; then
+        for f in "${BASH_DIR}"/onedrive/*; do
+            [ -f "${f}" ] || continue
+            local d
+            d=$(basename "${f}")
+            if [ -f "${USER_DIR}/.${d}.conf" ]; then
+                backed_domains+=("${d}")
+            fi
+        done
+    fi
+}
+
+_select_domain_backup() {
+    domain=""
+    if [[ "$(ls -A "${USER_DIR}")" ]]; then
+        _get_backed_up_domains
+        if [ "${#backed_domains[@]}" -gt 0 ]; then
+            printf "${GREEN}Ten mien da tao backup:${NC} %s\n" "$(IFS=', '; echo "${backed_domains[*]}")"
+            echo "----------------------------------------------"
+        fi
+        domains=()
+        _cd_dir "${USER_DIR}"
+        for entry_domain in .*.conf; do
+            local d=${entry_domain/.}
+            d=${d//.conf}
+            if [ "${d}" != '*' ] && [ ! -f "${BASH_DIR}/onedrive/${d}" ]; then
+                domains+=("${d}")
+            fi
+        done
+        if [ "${#domains[@]}" -eq 0 ]; then
+            ALERT=$(printf "%s\n" "${GREEN}Tat ca ten mien tren VPS deu da duoc tao backup truoc do.${NC}")
+            return
+        fi
+        echo "${LIST_DOMAIN}"
+        PS3="${INPUT_SELECT} [0 = Thoat]: "
+        select opt_domain in "${domains[@]}"; do
+            domain=$opt_domain
+            break
+        done
+    else
+        ALERT=$(printf "%s\n" "${RED}${EMPTY_DOMAIN}${NC}")
+    fi
+}
+
+_list_backed_up_domains() {
+    clear
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    printf "%s     Danh sach ten mien da tao backup         %s\n" "${GREEN}" "${NC}"
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    local cron_one cron_all
+    cron_one=$(crontab -l 2>/dev/null | grep -w 'backup_onedrive_one')
+    cron_all=$(crontab -l 2>/dev/null | grep -w 'backup_onedrive_all')
+    if [ -n "${cron_all}" ]; then
+        printf "Che do         : ${GREEN}Backup toan bo ten mien (backup_onedrive_all)${NC}\n"
+        printf "%s----------------------------------------------%s\n" "${GREEN}" "${NC}"
+    fi
+    _get_backed_up_domains
+    if [ "${#backed_domains[@]}" -eq 0 ]; then
+        if [ -z "${cron_all}" ]; then
+            printf "%s\n" "${RED}Chua co ten mien nao duoc tao backup theo ten mien.${NC}"
+        else
+            printf "%s\n" "${GREEN}Dang backup tat ca ten mien tren VPS.${NC}"
+        fi
+        printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+        echo ""
+        return
+    fi
+
+    local i=1
+    for d in "${backed_domains[@]}"; do
+        printf "${GREEN}%d.${NC} %s\n" "${i}" "${d}"
+        i=$((i + 1))
+    done
+    printf "%s==============================================%s\n" "${GREEN}" "${NC}"
+    read -r -p "Nhap STT ten mien muon xoa khoi danh sach backup [Enter / 0 = Quay lai]: " del_idx
+    if [[ -n "${del_idx}" && "${del_idx}" != "0" ]]; then
+        if [[ "${del_idx}" =~ ^[0-9]+$ ]] && [ "${del_idx}" -ge 1 ] && [ "${del_idx}" -le "${#backed_domains[@]}" ]; then
+            local del_domain="${backed_domains[$((del_idx - 1))]}"
+            rm -f "${BASH_DIR}/onedrive/${del_domain}"
+            _get_backed_up_domains
+            if [ "${#backed_domains[@]}" -eq 0 ] && [ -n "${cron_one}" ]; then
+                crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_one' | crontab -u root -
+            fi
+            clear
+            printf "${GREEN}Da xoa %s khoi danh sach backup.${NC}\n\n" "${del_domain}"
+        else
+            clear
+            printf "%s\n\n" "${RED}Lua chon khong chinh xac.${NC}"
+        fi
+    else
+        clear
+    fi
 }
 
 _select_time() {
@@ -116,29 +216,23 @@ _delete_old_backup_cron(){
 }
 
 _create_cron_backup_all() {
-    cron_all_exists=$(crontab -l | grep -w 'backup_onedrive_all')
-    if [ -z "${cron_all_exists}" ]; then
-        _delete_old_backup_cron
-        crontab -l >backupOneDrive
-        echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_all >/dev/null 2>&1" >>backupOneDrive
-        crontab backupOneDrive
-        rm -rf backupOneDrive
-    fi
+    _delete_old_backup_cron
+    crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_one' | grep -v 'backup_onedrive_all' >backupOneDrive
+    echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_all >/dev/null 2>&1" >>backupOneDrive
+    crontab backupOneDrive
+    rm -rf backupOneDrive
 }
 
 _create_cron_backup_one() {
-    cron_one_exists=$(crontab -l | grep -w 'backup_onedrive_one')
-    if [ -z "${cron_one_exists}" ]; then
-        _delete_old_backup_cron
-        crontab -l >backupOneDrive
-        echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_one >/dev/null 2>&1" >> backupOneDrive
-        crontab backupOneDrive
-        rm -rf backupOneDrive
-    fi
+    _delete_old_backup_cron
+    crontab -u root -l 2>/dev/null | grep -v 'backup_onedrive_all' | grep -v 'backup_onedrive_one' >backupOneDrive
+    echo "${time} bash /var/hostvn/menu/cronjob/backup_onedrive_one >/dev/null 2>&1" >> backupOneDrive
+    crontab backupOneDrive
+    rm -rf backupOneDrive
 }
 
 _backup_one() {
-    _select_domain
+    _select_domain_backup
     if [[ -z "${domain}" && -z "${ALERT}" ]]; then
         clear
         printf "%s\n" "${RED}Ban da chon huy thao tac.${NC}"
@@ -199,6 +293,8 @@ _run() {
     if [ "${type}" == "0" ]; then
         clear
         printf "%s\n" "${RED}Huy tao cronjob.${NC}"
+    elif [ "${type}" == "list" ]; then
+        _list_backed_up_domains
     else
         if [ "${type}" == "one" ]; then
             _backup_one
@@ -213,6 +309,7 @@ time=""
 backup_num=""
 domain=""
 type=""
+backed_domains=()
 
 if [ -f "/root/.config/rclone/rclone.conf" ]; then
     check_onedrive_remote=$(grep -w "onedrive" "/root/.config/rclone/rclone.conf" | cut -f2 -d'=')

@@ -35,8 +35,14 @@ do
         1)
             clear
             echo ""
-            cron=$(crontab -l)
-            printf "${RED}${cron}%s\n"
+            cron=$(crontab -l 2>/dev/null)
+            printf "${RED}%s${NC}\n" "${cron}"
+            if [ -d "/var/hostvn/ggdrive" ] && [ -n "$(ls -A /var/hostvn/ggdrive 2>/dev/null)" ]; then
+                printf "\n${GREEN}Ten mien auto backup Google Drive:${NC} %s\n" "$(ls -1 /var/hostvn/ggdrive 2>/dev/null | tr '\n' ' ')"
+            fi
+            if [ -d "/var/hostvn/onedrive" ] && [ -n "$(ls -A /var/hostvn/onedrive 2>/dev/null)" ]; then
+                printf "\n${GREEN}Ten mien auto backup OneDrive:${NC} %s\n" "$(ls -1 /var/hostvn/onedrive 2>/dev/null | tr '\n' ' ')"
+            fi
             echo ""
             ;;
         2) clear; cron_backup_local ;;
