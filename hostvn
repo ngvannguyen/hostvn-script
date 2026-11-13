@@ -197,7 +197,8 @@ option_change_ssh_port() {
             ;;
         "No")
             prompt_ssh="n"
-            SSH_PORT="22"
+            SSH_PORT=$(awk '/^Port[[:space:]]+[0-9]+/{print $2; exit}' /etc/ssh/sshd_config 2>/dev/null)
+            SSH_PORT="${SSH_PORT:-22}"
             break
             ;;
         *) printf "${RED}%s${NC}\n" "${WRONG_PHP_SELECT_2} $REPLY" ;;
@@ -2516,7 +2517,7 @@ character-set-server = utf8mb4
 datadir=/var/lib/mysql
 socket = /run/mysqld/mysqld.sock
 
-#bind-address=127.0.0.1
+bind-address=127.0.0.1
 
 tmpdir=/tmp
 
@@ -2748,7 +2749,16 @@ EOF
 # Change SSH Port
 ############################################
 change_ssh_port() {
-    sed -i "s/#Port 22/Port ${SSH_PORT}/g" /etc/ssh/sshd_config
+    if grep -qE '^[#[:space:]]*Port[[:space:]]+[0-9]+' /etc/ssh/sshd_config; then
+        sed -i -E "s/^[#[:space:]]*Port[[:space:]]+[0-9]+/Port ${SSH_PORT}/g" /etc/ssh/sshd_config
+    else
+        echo "Port ${SSH_PORT}" >> /etc/ssh/sshd_config
+    fi
+    # Ubuntu 22.10+/24.04+ dung ssh.socket mac dinh tren port 22, bo qua Port trong sshd_config
+    if systemctl list-unit-files ssh.socket >/dev/null 2>&1; then
+        systemctl disable --now ssh.socket >/dev/null 2>&1 || true
+        systemctl enable ssh.service >/dev/null 2>&1 || true
+    fi
 }
 
 ############################################
@@ -3456,30 +3466,16 @@ open_port() {
 y
 EOF
 
-    ufw allow ssh
+    if [[ "$prompt_ssh" =~ ^([yY]) ]]; then
+        ufw allow 8282/tcp
+    else
+        ufw allow "${SSH_PORT:-22}"/tcp
+    fi
+
     ufw allow http
     ufw allow https
     ufw allow 443/udp
-    ufw allow 20/tcp
-    ufw allow 21/tcp
-    ufw allow 25/tcp
-    ufw allow 53/tcp
-    ufw allow 110/tcp
-    ufw allow 143/tcp
-    ufw allow 993/tcp
-    ufw allow 995/tcp
-    ufw allow 9200/tcp
-    ufw allow 9300/tcp
-    ufw allow 465/tcp
-    ufw allow 587/tcp
     ufw allow "${RANDOM_ADMIN_PORT}"/tcp
-
-    ufw allow 20/udp
-    ufw allow 21/udp
-
-    if [[ "$prompt_ssh" =~ ^([yY]) ]]; then
-        ufw allow 8282/tcp
-    fi
 
     systemctl restart ufw
 }

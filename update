@@ -962,6 +962,10 @@ fi
 
 if [ -z "$utf8mb4_unicode_ci" ]; then
     mariadb_calculation
+    db_bind_line="#bind-address=127.0.0.1"
+    if grep -qE '^[[:space:]]*bind-address[[:space:]]*=' /etc/mysql/my.cnf 2>/dev/null; then
+        db_bind_line=$(grep -m1 -E '^[[:space:]]*bind-address[[:space:]]*=' /etc/mysql/my.cnf)
+    fi
     cat >"/etc/mysql/my.cnf" <<EOmy_cnf
 [client]
 port = 3306
@@ -982,7 +986,7 @@ character-set-server = utf8mb4
 datadir=/var/lib/mysql
 socket = /run/mysqld/mysqld.sock
 
-#bind-address=127.0.0.1
+${db_bind_line}
 
 tmpdir=/tmp
 

@@ -58,8 +58,22 @@ _confirm_enable_remote_mysql() {
     done
 }
 
+_set_mariadb_bind() {
+    local target_ip="$1"
+    if [ -f "/etc/mysql/my.cnf" ]; then
+        if grep -qE '^[#[:space:]]*bind-address[[:space:]]*=' /etc/mysql/my.cnf; then
+            sed -i -E "s/^[#[:space:]]*bind-address[[:space:]]*=.*/bind-address=${target_ip}/" /etc/mysql/my.cnf
+        else
+            sed -i "/^\[mysqld\]/a bind-address=${target_ip}" /etc/mysql/my.cnf
+        fi
+        systemctl restart mariadb 2>/dev/null || service mariadb restart 2>/dev/null
+    fi
+}
+
 _enable_remote_mysql() {
     if [[ "${confirm_enable_remote}" =~ ^([yY])$ ]]; then
+        _set_mariadb_bind "0.0.0.0"
+        ufw delete deny 3306/tcp >/dev/null 2>&1 || true
         ufw allow 3306/tcp
         clear
         user_remote_mysql=$(grep -w "user_remote_mysql" "${FILE_INFO}" | cut -f2 -d'=')
@@ -125,7 +139,9 @@ _confirm_disable_remote_mysql() {
 
 _disable_remote_mysql() {
     if [[ "${confirm_disable_remote}" =~ ^([yY])$ ]]; then
-        ufw deny 3306/tcp
+        _set_mariadb_bind "127.0.0.1"
+        ufw delete allow 3306/tcp >/dev/null 2>&1 || true
+        ufw delete deny 3306/tcp >/dev/null 2>&1 || true
         notify="${GREEN}Tat Remote Mysql thanh cong.${NC}"
     else
         notify="${RED}Huy thao tac.${NC}"
@@ -142,11 +158,11 @@ _change_pass_remote_mysql(){
         notify="${RED}Ban chua bat Remote Mysql.${NC}"
     else
         password_remote_mysql=$(_gen_pass)
-        mysql -uadmin -p"${mysql_pwd}" -e "SET PASSWORD FOR '${user_remote_mysql}'@'*' = PASSWORD('${password_remote_mysql}');"
+        mysql -uadmin -p"${mysql_pwd}" -e "ALTER USER IF EXISTS '${user_remote_mysql}'@'%' IDENTIFIED BY '${password_remote_mysql}'; ALTER USER IF EXISTS '${user_remote_mysql}'@'localhost' IDENTIFIED BY '${password_remote_mysql}'; FLUSH PRIVILEGES;"
         sed -i '/password_remote_mysql/d' "${FILE_INFO}"
         echo "password_remote_mysql=${password_remote_mysql}" >>"${FILE_INFO}"
 
-        notify="${RED}Doi mat khau Remote Mysql thanh cong.${NC}"
+        notify="${GREEN}Doi mat khau Remote Mysql thanh cong.${NC}"
         user_remote_mysql="${user_remote_mysql}"
         password_remote_mysql="${password_remote_mysql}"
     fi

@@ -19,7 +19,8 @@ printf "%sSSH/SFTP Port: ${ssh_port}%s\n" "${GREEN}" "${NC}"
 printf "%s=================%s\n" "${GREEN}" "${NC}"
 
 _set_var(){
-    current_port=$(grep -w "Port" /etc/ssh/sshd_config | cut -f2 -d" ")
+    current_port=$(awk '/^[#[:space:]]*Port[[:space:]]+[0-9]+/{print $2; exit}' /etc/ssh/sshd_config 2>/dev/null)
+    current_port="${current_port:-22}"
     admin_port=$(grep -w "admin_port" "${FILE_INFO}" | cut -f2 -d'=')
 }
 
@@ -57,21 +58,27 @@ _change_port(){
         cp /etc/ssh/sshd_config /etc/ssh/sshd_config."${CURRENT_DATE}"
     fi
 
-    check_port_config=$(grep -w "#Port" /etc/ssh/sshd_config | cut -f2 -d" ")
-
-    if [ -z "${check_port_config}" ]; then
-        sed -i "s/Port ${current_port}/Port ${port_new}/g" /etc/ssh/sshd_config
+    if grep -qE '^[#[:space:]]*Port[[:space:]]+[0-9]+' /etc/ssh/sshd_config; then
+        sed -i -E "s/^[#[:space:]]*Port[[:space:]]+[0-9]+/Port ${port_new}/g" /etc/ssh/sshd_config
     else
-        sed -i "s/#Port ${current_port}/Port ${port_new}/g" /etc/ssh/sshd_config
+        echo "Port ${port_new}" >> /etc/ssh/sshd_config
     fi
 
     sed -i '/ssh_port=/d' "${FILE_INFO}"
     echo "ssh_port=${port_new}" >> "${FILE_INFO}"
 
     ufw allow "${port_new}"/tcp
-    ufw delete allow "${current_port}"
+    ufw delete allow "${current_port}"/tcp >/dev/null 2>&1 || true
+    ufw delete allow "${current_port}" >/dev/null 2>&1 || true
+    if [ "${current_port}" == "22" ]; then
+        ufw delete allow ssh >/dev/null 2>&1 || true
+    fi
 
-    systemctl restart sshd
+    if systemctl list-unit-files ssh.socket >/dev/null 2>&1; then
+        systemctl disable --now ssh.socket >/dev/null 2>&1 || true
+        systemctl enable ssh.service >/dev/null 2>&1 || true
+    fi
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     systemctl restart ufw
 
     rm -rf /etc/fail2ban/jail.local
