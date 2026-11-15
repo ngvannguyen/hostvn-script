@@ -13,6 +13,8 @@
 # shellcheck disable=SC2034
 
 # Color
+export TERM="${TERM:-xterm}"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 RED=$(tput setaf 1)
 GREEN=$(tput setaf 2)
 NC=$(tput sgr0)

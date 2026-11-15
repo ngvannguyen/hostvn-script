@@ -399,7 +399,7 @@ remote_can_list() {
 #
 # Dat BACKUP_REMOTE_FOLDER = thu muc THUC TE da dung, de ghi so muc luc dung cho.
 _bk_remote_size() {
-    rclone lsjson "$1" 2>/dev/null | grep -o '"Size":[0-9]*' | head -1 | cut -d: -f2
+    rclone lsjson "$1" 2>/dev/null | grep -oE '"Size":[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+'
 }
 
 # Moi file trong bdir phai co tren remote va DUNG kich thuoc

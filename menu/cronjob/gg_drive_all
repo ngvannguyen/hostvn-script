@@ -13,8 +13,12 @@
 source /var/hostvn/ipaddress
 source /var/hostvn/.hostvn.conf
 source /var/hostvn/menu/helpers/variable_common
+source /var/hostvn/menu/helpers/function
 
 LOG="/var/log/rclone.log"
+
+exec 9>/var/lock/hostvn_cloud_backup.lock
+flock 9
 
 # Kiem tra remote co ton tai trong rclone.conf khong
 if ! rclone listremotes 2>/dev/null | grep -q "^${remote}:"; then
@@ -41,6 +45,10 @@ for users in /home/*; do
                         if [ -n "${db_name}" ]; then
                             cd "${backup_dir}" || continue
                             mariadb-dump -uadmin -p"${mysql_pwd}" "${db_name}" 2>/dev/null | gzip > "${db_name}".sql.gz
+                            if [ "${PIPESTATUS[0]}" -ne 0 ] || [ ! -s "${db_name}.sql.gz" ]; then
+                                rm -f "${db_name}.sql.gz"
+                                echo "[$(date)] WARN: ${domain} - Dump database '${db_name}' that bai (bo qua file sql rong)." >> "${LOG}"
+                            fi
                         fi
 
                         # Nen source code
@@ -51,22 +59,30 @@ for users in /home/*; do
                         if [ -d "/home/${user}/${domain}/public_html/storage" ]; then
                             tar -cpzf "${backup_dir}/${domain}.tar.gz" \
                                 --exclude "public_html/storage/framework/cache" --exclude "public_html/storage/framework/views" "${public}"
+                            tar_rc=$?
                         else
                             tar -cpzf "${backup_dir}/${domain}.tar.gz" \
                                 --exclude "public_html/wp-content/cache" "${public}"
+                            tar_rc=$?
                         fi
 
-                        # Upload len Google Drive - CHI xoa local khi upload thanh cong
-                        if rclone copy "${backup_dir}" "${remote}":"${IPADDRESS}"/"${CURRENT_DATE}"/"${domain}" --bwlimit 30M >> "${LOG}" 2>&1; then
-                            rm -rf "${backup_dir}"
-                            echo "[$(date)] OK: ${domain} - Upload thanh cong." >> "${LOG}"
-                        else
-                            echo "[$(date)] ERROR: ${domain} - Upload that bai. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
-                        fi
-
-                        # Don dep wp-config.php tam
+                        # Don dep wp-config.php tam ngay sau khi nen
                         if [[ -f "/home/${user}/${domain}/public_html/wp-config.php" && -f "/home/${user}/${domain}/wp-config.php" ]]; then
                             rm -rf /home/"${user}"/"${domain}"/public_html/wp-config.php
+                        fi
+
+                        if [ "${tar_rc}" -ge 2 ] || [ ! -s "${backup_dir}/${domain}.tar.gz" ]; then
+                            echo "[$(date)] ERROR: ${domain} - Nen ma nguon that bai (tar exit=${tar_rc}). Huy upload." >> "${LOG}"
+                            continue
+                        fi
+
+                        # Upload va xac minh dung luong file tren remote truoc khi xoa local
+                        if backup_upload_dir "${remote}" "${CURRENT_DATE}" "${domain}" "${backup_dir}"; then
+                            backup_index_add "${remote}" "${BACKUP_REMOTE_FOLDER:-${CURRENT_DATE}}" "${domain}" "${backup_dir}"
+                            rm -rf "${backup_dir}"
+                            echo "[$(date)] OK: ${domain} - Upload thanh cong len ${remote} (${BACKUP_REMOTE_FOLDER:-${CURRENT_DATE}})." >> "${LOG}"
+                        else
+                            echo "[$(date)] ERROR: ${domain} - Upload len ${remote} that bai hoac khong khop dung luong. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
                         fi
                     fi
                 done

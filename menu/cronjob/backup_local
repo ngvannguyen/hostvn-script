@@ -13,6 +13,9 @@
 source /var/hostvn/.hostvn.conf
 source /var/hostvn/menu/helpers/variable_common
 
+exec 9>/var/lock/hostvn_cloud_backup.lock
+flock 9
+
 backup_num=$(grep -w "backup_num" "${FILE_INFO}" | cut -f2 -d'=')
 
 for users in /home/*; do
