@@ -56,10 +56,21 @@ jobs:
           echo "Python py_compile OK."
 
       - name: Sanity check version file
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          grep -q '^script_version=' version || { echo "::error::version thieu script_version"; exit 1; }
-          echo "Phien ban kiem tra: $(grep '^script_version=' version)"
+          ver=$(grep '^script_version=' version | cut -d'=' -f2)
+          [ -n "${ver}" ] || { echo "::error::version thieu script_version"; exit 1; }
+          echo "Phien ban kiem tra: script_version=${ver}"
+          if [[ "${REF_NAME}" == "refs/heads/main" || "${REF_NAME}" == "refs/heads/master" || ( "${EVENT_NAME}" == "pull_request" && ( "${BASE_REF}" == "main" || "${BASE_REF}" == "master" ) ) ]]; then
+            if [[ "${ver}" == *-* ]]; then
+              echo "::error::Khong duoc phat hanh phien ban pre-release (${ver}) len main! Hay bo hau to -dev trong file version truoc khi merge."
+              exit 1
+            fi
+          fi
 
   # Single deploy job since we're just deploying (main/master only)
   deploy:
