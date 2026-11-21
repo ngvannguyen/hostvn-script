@@ -2,8 +2,10 @@
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Runs validation on all branches & PRs; Pages deployment only runs on main/master
   push:
+    branches: ["**"]
+  pull_request:
     branches: ["main", "master"]
 
   # Allows you to run this workflow manually from the Actions tab
@@ -17,12 +19,52 @@ permissions:
 
 # Allow one concurrent deployment
 concurrency:
-  group: "pages"
+  group: "pages-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
-  # Single deploy job since we're just deploying
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax check Bash scripts (bash -n)
+        run: |
+          set -euo pipefail
+          checked=0
+          for f in install ubuntu hostvn update; do
+            bash -n "$f"
+            checked=$((checked + 1))
+          done
+          while IFS= read -r -d '' f; do
+            first_line=$(head -n 1 "$f" 2>/dev/null || true)
+            if [[ "$first_line" == "#!"*bash* ]]; then
+              bash -n "$f"
+              checked=$((checked + 1))
+            elif [[ "$first_line" == "#!"*/sh* ]]; then
+              sh -n "$f"
+              checked=$((checked + 1))
+            fi
+          done < <(find menu -path menu/template -prune -o -type f -print0)
+          echo "Syntax check OK: ${checked} shell scripts passed."
+
+      - name: Syntax check Python scripts (py_compile)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile menu/telegram_bot/*.py
+          echo "Python py_compile OK."
+
+      - name: Sanity check version file
+        run: |
+          set -euo pipefail
+          grep -q '^script_version=' version || { echo "::error::version thieu script_version"; exit 1; }
+          echo "Phien ban kiem tra: $(grep '^script_version=' version)"
+
+  # Single deploy job since we're just deploying (main/master only)
   deploy:
+    needs: validate
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -54,12 +96,6 @@ jobs:
           echo "So file trong goi: $(grep -vc '/$' /tmp/pkg_list.txt)"
           grep -q 'menu/hostvn' /tmp/pkg_list.txt \
             || { echo "::error::goi thieu file mong doi"; exit 1; }
-
-      - name: Sanity check version file
-        run: |
-          set -euo pipefail
-          grep -q '^script_version=' version || { echo "::error::version thieu script_version"; exit 1; }
-          echo "Se phat hanh: $(grep '^script_version=' version)"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -14,12 +14,14 @@ source /var/hostvn/menu/validate/rule
 source /var/hostvn/menu/helpers/function
 
 _set_var(){
-    new_v=$(curl -s "${UPDATE_LINK}/version?t=$(date +%s)" | grep "script_version=" | cut -f2 -d'=')
+    new_v=$(curl -fsS --max-time 15 "${UPDATE_LINK}/version?t=$(date +%s)" 2>/dev/null | grep "^script_version=" | cut -f2 -d'=')
     current_v=$(grep -w "script_version" "${FILE_INFO}" | cut -f2 -d'=');
 }
 
 _check_update(){
-    if [[ "${new_v}" == "${current_v}" ]]; then
+    if [ -z "${new_v}" ]; then
+        ALERT=$(printf "%s\n" "${RED}Loi: Khong the kiem tra phien ban moi tu ${UPDATE_LINK}.${NC}")
+    elif [[ "${new_v}" == "${current_v}" ]]; then
         ALERT=$(printf "%s\n" "${RED}Ban dang su dung phien ban moi nhat.${NC}")
     fi
 }
@@ -45,19 +47,33 @@ _update(){
         apt -y install dos2unix
     fi
     _cd_dir "${BASH_DIR}"
-    curl -so update "${UPDATE_LINK}/update?t=$(date +%s)"
-    dos2unix update
-    chmod +x update
-    bash update
+    rm -f update.tmp
+    if ! curl -fsS --max-time 30 -o update.tmp "${UPDATE_LINK}/update?t=$(date +%s)"; then
+        rm -f update.tmp
+        clear
+        printf "${RED}%s${NC}\n" "Loi: Khong the tai file update tu ${UPDATE_LINK}. Giu nguyen phien ban hien tai."
+        sleep 3
+        return 1
+    fi
+    dos2unix update.tmp >/dev/null 2>&1
+    if ! bash -n update.tmp; then
+        rm -f update.tmp
+        clear
+        printf "${RED}%s${NC}\n" "Loi: File update tai ve co loi cu phap (bash -n). Huy cap nhat de bao ve he thong."
+        sleep 3
+        return 1
+    fi
+    chmod +x update.tmp
+    bash update.tmp
     update_exit_code=$?
-    rm -rf update
+    rm -f update.tmp
     clear
-    if [ $update_exit_code -eq 0 ] && nginx -t; then
+    if [ "${update_exit_code}" -eq 0 ] && nginx -t >/dev/null 2>&1; then
         printf "%s\n" "${GREEN}Update ${AUTHOR} Script thanh cong.${NC}"
         printf "%s\n" "${RED}Script se tu dong thoat menu de ap dung update...${NC}"
     else
-        printf "${RED}%s${NC}\n" "Loi: Quatrinh cap nhat that bai!"
-        printf "${RED}%s${NC}\n" "Vui long kiem tra loi phia tren (Loi tai file hoac loi Nginx)."
+        printf "${RED}%s${NC}\n" "Loi: Qua trinh cap nhat that bai (ma loi=${update_exit_code})!"
+        printf "${RED}%s${NC}\n" "He thong da giu nguyen hoac tu dong rollback cau hinh truoc do. Kiem tra log phia tren."
     fi
     sleep 3
     exit

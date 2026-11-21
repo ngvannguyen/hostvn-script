@@ -3,12 +3,79 @@
 printf "%s\n" "Dang update vui long doi...."
 UPDATE_LINK="${HOSTVN_SCRIPT_LINK:-https://ngvannguyen.github.io/hostvn-script}"
 CACHE_BUST="t=$(date +%s)"
-script_version=$(curl -s "${UPDATE_LINK}/version?${CACHE_BUST}" | grep '^script_version=' | cut -d'=' -f2)
+script_version=$(curl -fsS --max-time 15 "${UPDATE_LINK}/version?${CACHE_BUST}" 2>/dev/null | grep '^script_version=' | cut -d'=' -f2)
+if [ -z "${script_version}" ]; then
+    echo "ERROR: Khong lay duoc script_version tu ${UPDATE_LINK}/version. Huy cap nhat."
+    exit 1
+fi
 IPADDRESS=$(grep -w "IPADDRESS" "/var/hostvn/ipaddress" | cut -f2 -d'=')
 RAM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 
 php1_version=$(grep -w "php1_version" "/var/hostvn/.hostvn.conf" | cut -f2 -d'=')
 php2_version=$(grep -w "php2_version" "/var/hostvn/.hostvn.conf" | cut -f2 -d'=')
+
+UPDATE_FAILED=0
+BAK_DIR="/tmp/hostvn_update_bak_$$"
+mkdir -p "${BAK_DIR}"
+trap 'rm -rf "${BAK_DIR}"' EXIT
+
+# Sao luu cau hinh dich vu truoc khi thuc hien bat ky thay doi nao
+[ -d /etc/nginx ] && cp -a /etc/nginx "${BAK_DIR}/nginx"
+[ -d /etc/php ] && cp -a /etc/php "${BAK_DIR}/php"
+[ -f /etc/mysql/my.cnf ] && cp -a /etc/mysql/my.cnf "${BAK_DIR}/my.cnf"
+[ -d /etc/fail2ban ] && cp -a /etc/fail2ban "${BAK_DIR}/fail2ban"
+
+_safe_reload_nginx() {
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx 2>/dev/null || systemctl start nginx 2>/dev/null
+        return $?
+    fi
+    echo "ERROR: Cau hinh Nginx bi loi (nginx -t). Dang tu dong rollback..."
+    nginx -t || true
+    if [ -d "${BAK_DIR}/nginx" ]; then
+        mv /etc/nginx "${BAK_DIR}/nginx_broken" && cp -a "${BAK_DIR}/nginx" /etc/nginx
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
+    fi
+    return 1
+}
+
+_safe_reload_php() {
+    local v fpm_bin rc=0
+    for v in "${php1_version}" "${php2_version}"; do
+        [ -z "${v}" ] && continue
+        [ -d "/etc/php/${v}/fpm" ] || continue
+        fpm_bin=$(command -v "php-fpm${v}" 2>/dev/null || echo "/usr/sbin/php-fpm${v}")
+        if [ -x "${fpm_bin}" ] && ! "${fpm_bin}" -t >/dev/null 2>&1; then
+            echo "ERROR: Cau hinh PHP-FPM ${v} bi loi. Dang tu dong rollback..."
+            "${fpm_bin}" -t || true
+            if [ -d "${BAK_DIR}/php/${v}" ]; then
+                mv "/etc/php/${v}" "${BAK_DIR}/php_${v}_broken" && cp -a "${BAK_DIR}/php/${v}" "/etc/php/${v}"
+            fi
+            rc=1
+        else
+            systemctl reload "php${v}-fpm" 2>/dev/null || systemctl restart "php${v}-fpm" 2>/dev/null || rc=1
+        fi
+    done
+    return "${rc}"
+}
+
+_safe_restart_mariadb() {
+    if command -v mariadbd >/dev/null 2>&1; then
+        if ! mariadbd --validate-config >/dev/null 2>&1; then
+            echo "ERROR: Cau hinh MariaDB (/etc/mysql/my.cnf) khong hop le. Dang tu dong rollback..."
+            mariadbd --validate-config || true
+            [ -f "${BAK_DIR}/my.cnf" ] && cp -a "${BAK_DIR}/my.cnf" /etc/mysql/my.cnf
+            return 1
+        fi
+    fi
+    if ! systemctl restart mariadb 2>/dev/null; then
+        echo "ERROR: Khoi dong lai MariaDB that bai. Dang tu dong rollback /etc/mysql/my.cnf..."
+        [ -f "${BAK_DIR}/my.cnf" ] && cp -a "${BAK_DIR}/my.cnf" /etc/mysql/my.cnf
+        systemctl restart mariadb 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
 
 mariadb_calculation() {
     if [[ ${RAM_TOTAL} -gt 400000 && ${RAM_TOTAL} -le 2099152 ]]; then #1GB Ram
@@ -250,41 +317,81 @@ mariadb_calculation() {
     fi
 }
 
-# Update Menu
-cd /var/hostvn
-if wget -O menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz?${CACHE_BUST}" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
-    # Bao ton venv cua telegram bot truoc khi xoa menu/
-    # (venv duoc tao rieng tren VPS, KHONG co trong menu.tar.gz)
-    if [ -d "/var/hostvn/menu/telegram_bot/venv" ]; then
-        mv /var/hostvn/menu/telegram_bot/venv /tmp/hostvn_tgbot_venv_bak
+# Update Menu (Staging -> Kiem tra cu phap -> Swap an toan, giu lai menu.bak de rollback)
+cd /var/hostvn || exit 1
+rm -f menu_new.tar.gz
+if curl -fsSL --max-time 60 -o menu_new.tar.gz "${UPDATE_LINK}/menu.tar.gz?${CACHE_BUST}" && tar -tzf menu_new.tar.gz > /dev/null 2>&1; then
+    mkdir -p "${BAK_DIR}/stage"
+    if ! tar -xf menu_new.tar.gz -C "${BAK_DIR}/stage" || [ ! -f "${BAK_DIR}/stage/menu/hostvn" ]; then
+        echo "ERROR: Giai nen menu_new.tar.gz that bai hoac thieu menu/hostvn. Giu nguyen menu hien tai."
+        rm -f menu_new.tar.gz
+        exit 1
     fi
-    rm -rf menu
-    tar -xf menu_new.tar.gz
+
+    # Chuan hoa quyen va dinh dang LF trong thu muc tam truoc khi kiem tra cu phap
+    chmod +x "${BAK_DIR}/stage/menu"/* "${BAK_DIR}/stage/menu"/*/* "${BAK_DIR}/stage/menu"/*/*/* "${BAK_DIR}/stage/menu"/*/*/*/* 2>/dev/null || true
+    chmod +x "${BAK_DIR}/stage/menu/cronjob"/* 2>/dev/null || true
+    find "${BAK_DIR}/stage/menu" -type f -exec dos2unix -q {} + 2>/dev/null || true
+
+    # Kiem tra cu phap toan bo bash script trong ban cap nhat truoc khi thay the
+    syntax_err=0
+    while IFS= read -r -d '' sf; do
+        first_line=$(head -n 1 "${sf}" 2>/dev/null || true)
+        if [[ "${first_line}" == "#!"*bash* ]]; then
+            if ! bash -n "${sf}"; then
+                echo "ERROR: Loi cu phap Bash trong goi cap nhat: ${sf}"
+                syntax_err=1
+            fi
+        elif [[ "${first_line}" == "#!"*/sh* ]]; then
+            if ! sh -n "${sf}"; then
+                echo "ERROR: Loi cu phap sh trong goi cap nhat: ${sf}"
+                syntax_err=1
+            fi
+        fi
+    done < <(find "${BAK_DIR}/stage/menu" -path "${BAK_DIR}/stage/menu/template" -prune -o -type f -print0)
+
+    # Kiem tra cu phap Python cua Telegram Bot (neu co python3/venv)
+    py_bin=""
+    if [ -x "/var/hostvn/menu/telegram_bot/venv/bin/python" ]; then
+        py_bin="/var/hostvn/menu/telegram_bot/venv/bin/python"
+    elif command -v python3 >/dev/null 2>&1; then
+        py_bin="python3"
+    fi
+    if [ -n "${py_bin}" ] && ls "${BAK_DIR}/stage/menu/telegram_bot"/*.py >/dev/null 2>&1; then
+        if ! "${py_bin}" -m py_compile "${BAK_DIR}/stage/menu/telegram_bot"/*.py; then
+            echo "ERROR: Loi cu phap Python trong telegram_bot cua goi cap nhat."
+            syntax_err=1
+        fi
+    fi
+
+    if [ "${syntax_err}" -ne 0 ]; then
+        echo "ERROR: Goi menu moi co loi cu phap. Huy cap nhat, giu nguyen /var/hostvn/menu hien tai."
+        rm -f menu_new.tar.gz
+        exit 1
+    fi
+
+    # Bao ton venv cua telegram bot truoc khi doi thu muc menu/
+    if [ -d "/var/hostvn/menu/telegram_bot/venv" ]; then
+        mv /var/hostvn/menu/telegram_bot/venv "${BAK_DIR}/tgbot_venv"
+    fi
+    rm -rf /var/hostvn/menu.bak
+    [ -d /var/hostvn/menu ] && mv /var/hostvn/menu /var/hostvn/menu.bak
+    mv "${BAK_DIR}/stage/menu" /var/hostvn/menu
     rm -f menu_new.tar.gz
-    # Khoi phuc venv sau khi giai nen
-    if [ -d "/tmp/hostvn_tgbot_venv_bak" ]; then
+    # Khoi phuc venv sau khi swap
+    if [ -d "${BAK_DIR}/tgbot_venv" ]; then
         mkdir -p /var/hostvn/menu/telegram_bot
-        mv /tmp/hostvn_tgbot_venv_bak /var/hostvn/menu/telegram_bot/venv
+        mv "${BAK_DIR}/tgbot_venv" /var/hostvn/menu/telegram_bot/venv
     fi
 else
-    printf "${RED}%s${NC}\n" "Loi: Khong the tai hoac file menu.tar.gz bi loi!"
-    printf "${RED}%s${NC}\n" "Vui long kiem tra lai ket noi hoac cau hinh GitHub Pages."
+    echo "ERROR: Khong the tai hoac file menu.tar.gz bi loi! Giu nguyen menu hien tai."
     rm -f menu_new.tar.gz
     exit 1
 fi
 clear
-cd menu
-chmod +x ./* &> /dev/null
-chmod +x ./*/* &> /dev/null
-chmod +x ./*/*/* &> /dev/null
-chmod +x ./*/*/*/* &> /dev/null
-chmod +x /var/hostvn/menu/cronjob/* &> /dev/null
-dos2unix ./* &> /dev/null
-dos2unix ./*/* &> /dev/null
-dos2unix ./*/*/* &> /dev/null
-dos2unix ./*/*/*/* &> /dev/null
-rm -rf /usr/bin/hostvn
-mv /var/hostvn/menu/hostvn /usr/bin/hostvn
+cd /var/hostvn/menu || exit 1
+cp -f /var/hostvn/menu/hostvn /usr/bin/hostvn.tmp && chmod +x /usr/bin/hostvn.tmp && mv -f /usr/bin/hostvn.tmp /usr/bin/hostvn
+rm -f /var/hostvn/menu/hostvn
 sed -i '/script_version=/d' /var/hostvn/.hostvn.conf
 echo "script_version=${script_version}" >> /var/hostvn/.hostvn.conf
 
@@ -395,7 +502,9 @@ ssh_port=$(grep -w "ssh_port" "/var/hostvn/.hostvn.conf" | cut -f2 -d'=')
 admin_email=$(grep -w "admin_email" "/var/hostvn/.hostvn.conf" | cut -f2 -d'=')
 check_jail_local_config=$(grep -w "${admin_port}" "/etc/fail2ban/jail.local")
 
+f2b_changed=0
 if [ -z "${check_jail_local_config}" ]; then
+    f2b_changed=1
     rm -rf /etc/fail2ban/jail.local
     if [ -f "/var/hostvn/custom/fail2ban/jail.local" ]; then
         cp /var/hostvn/custom/fail2ban/jail.local /etc/fail2ban/jail.local
@@ -410,6 +519,7 @@ fi
 
 check_http_auth_config=$(grep -w "${admin_port}" "/etc/fail2ban/jail.d/nginx-http-auth.conf")
 if [[ -z "${check_http_auth_config}" ]]; then
+    f2b_changed=1
     cat > "/etc/fail2ban/jail.d/nginx-http-auth.conf" << END
 [nginx-http-auth]
 enabled  = true
@@ -421,7 +531,17 @@ bantime  = 86400
 END
 fi
 
-systemctl restart fail2ban
+if [ "${f2b_changed}" -eq 1 ]; then
+    if command -v fail2ban-client >/dev/null 2>&1 && ! fail2ban-client -t >/dev/null 2>&1; then
+        echo "ERROR: Cau hinh Fail2ban bi loi. Dang tu dong rollback..."
+        if [ -d "${BAK_DIR}/fail2ban" ]; then
+            mv /etc/fail2ban "${BAK_DIR}/fail2ban_broken" && cp -a "${BAK_DIR}/fail2ban" /etc/fail2ban
+        fi
+        UPDATE_FAILED=1
+    else
+        systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null || UPDATE_FAILED=1
+    fi
+fi
 
 check_web_apps_config=$(grep -w "nginx_error" "/etc/nginx/web_apps.conf")
 if [ -n "${check_web_apps_config}" ]; then
@@ -886,12 +1006,6 @@ if [[ ! -f /etc/nginx/extra/rocket_nginx.conf && -f /var/hostvn/menu/template/ro
     cp /var/hostvn/menu/template/rocket_nginx.conf /etc/nginx/extra/rocket_nginx.conf
 fi
 
-if nginx -t; then
-    systemctl reload php"${PHP1_VERSION}"-fpm
-    systemctl reload php"${PHP2_VERSION}"-fpm
-    systemctl restart nginx
-fi
-
 if [ -f /var/hostvn/telegram/servicesNotify.sh ]; then
     CHAT_ID=$(grep -w "CHAT_ID=" "/var/hostvn/telegram/servicesNotify.sh" | cut -f2 -d'=')
     TOKEN=$(grep -w "TOKEN=" "/var/hostvn/telegram/servicesNotify.sh" | cut -f2 -d'=')
@@ -1140,35 +1254,31 @@ innodb_online_alter_log_max_size=128M
 query_cache_strip_comments=0
 log_slow_filter =admin,filesort,filesort_on_disk,full_join,full_scan,query_cache,query_cache_miss,tmp_table,tmp_table_on_disk
 EOmy_cnf
-    service mariadb restart
+    _safe_restart_mariadb || UPDATE_FAILED=1
 fi
 
 # SSL Renew cronjob
-ssl_cron_exists=$(crontab -l | grep -w 'acme.sh')
+ssl_cron_exists=$(crontab -l 2>/dev/null | grep -w 'acme.sh')
 if [ -n "${ssl_cron_exists}" ]; then
-    crontab -u root -l | grep -v "acme.sh" | crontab -u root -
+    crontab -u root -l 2>/dev/null | grep -v "acme.sh" | crontab -u root -
 fi
 
-ssl_cron_exists=$(crontab -l | grep -w 'acme.sh')
+ssl_cron_exists=$(crontab -l 2>/dev/null | grep -w 'acme.sh')
 if [ -z "${ssl_cron_exists}" ]; then
-    crontab -l >auto_ssl
+    crontab -l 2>/dev/null >auto_ssl
     echo "0 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" >/dev/null 2>&1" >>auto_ssl
     crontab auto_ssl
     rm -rf auto_ssl
 fi
 
-systemctl restart php"${php1_version}"-fpm
-if [ -n "${php2_version}" ]; then
-    systemctl restart php"${php2_version}"-fpm
-fi
-
-# Fix CF config
-cf_cron_exists=$(crontab -l | grep -w 'updateCloudflareRangeIP')
+# Fix CF config (khong ghi de neu dang chay Cloudflare Tunnel de giu nguyen CF-Connecting-IP)
+cf_cron_exists=$(crontab -l 2>/dev/null | grep -w 'updateCloudflareRangeIP')
 if [ -n "${cf_cron_exists}" ]; then
-    crontab -u root -l | grep -v "updateCloudflareRangeIP" | crontab -u root -
+    crontab -u root -l 2>/dev/null | grep -v "updateCloudflareRangeIP" | crontab -u root -
 fi
 
-cat > "/etc/nginx/extra/cloudflare.conf" << END
+if ! grep -qw 'network_mode=tunnel' /var/hostvn/.hostvn.conf 2>/dev/null; then
+    cat > "/etc/nginx/extra/cloudflare.conf" << END
 real_ip_header X-Forwarded-For;
 set_real_ip_from 173.245.48.0/20;
 set_real_ip_from 103.21.244.0/22;
@@ -1193,16 +1303,25 @@ set_real_ip_from 2405:8100::/32;
 set_real_ip_from 2a06:98c0::/29;
 set_real_ip_from 2c0f:f248::/32;
 END
-
-systemctl restart nginx 2>/dev/null || systemctl reload nginx 2>/dev/null || true
-
-# Update WP-CLI
-rm -rf /usr/local/bin/wp
-curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-mv wp-cli.phar wp && chmod +x wp
-mv wp /usr/local/bin/
-
-# Restart Telegram Bot (neu dang chay) — file code da bi thay the nen can restart
-if systemctl is-active hostvn-telegram-bot >/dev/null 2>&1; then
-    systemctl restart hostvn-telegram-bot
 fi
+
+# Kiem tra cu phap va reload an toan (tu dong rollback neu loi)
+_safe_reload_php || UPDATE_FAILED=1
+_safe_reload_nginx || UPDATE_FAILED=1
+
+# Update WP-CLI an toan (chi thay binary khi tai thanh cong)
+if curl -fsSL --max-time 30 -o "${BAK_DIR}/wp-cli.phar" https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && [ -s "${BAK_DIR}/wp-cli.phar" ]; then
+    chmod +x "${BAK_DIR}/wp-cli.phar"
+    mv -f "${BAK_DIR}/wp-cli.phar" /usr/local/bin/wp
+fi
+
+# Restart Telegram Bot (neu dang chay) — kiem tra py_compile truoc khi restart
+if systemctl is-active hostvn-telegram-bot >/dev/null 2>&1; then
+    if [ -x /usr/local/bin/hostvn-bot ]; then
+        /usr/local/bin/hostvn-bot restart || UPDATE_FAILED=1
+    else
+        systemctl restart hostvn-telegram-bot || UPDATE_FAILED=1
+    fi
+fi
+
+exit "${UPDATE_FAILED}"
