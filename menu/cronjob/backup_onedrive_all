@@ -76,10 +76,10 @@ for users in /home/*; do
                             continue
                         fi
 
-                        # Upload len OneDrive - CHI xoa local khi upload thanh cong
-                        if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}/${domain}" --bwlimit 30M >> "${LOG}" 2>&1; then
+                        # Upload len OneDrive theo cau truc <IP>/<domain>/<ngay> - CHI xoa local khi upload thanh cong
+                        if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${domain}/${CURRENT_DATE}" --bwlimit 30M >> "${LOG}" 2>&1; then
                             rm -rf "${backup_dir}"
-                            echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong." >> "${LOG}"
+                            echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong (${domain}/${CURRENT_DATE})." >> "${LOG}"
                         else
                             echo "[$(date)] ERROR: ${domain} - Upload OneDrive that bai. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
                         fi
@@ -92,4 +92,4 @@ done
 
 # Xoa backup cu tren OneDrive
 rclone -q --min-age "${backup_num}"d delete "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
-rclone -q --min-age "${backup_num}"d rmdirs "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
+rclone -q --min-age "${backup_num}"d rmdirs --leave-root "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1

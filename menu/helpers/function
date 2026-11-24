@@ -379,6 +379,14 @@ backup_index_files() {
     grep "^${2}|${3}|" "$(_bk_index_file "$1")" 2>/dev/null | cut -d'|' -f3 | tr ',' '\n' | grep -v '^$'
 }
 
+backup_index_all_domains() {
+    cut -d'|' -f2 "$(_bk_index_file "$1")" 2>/dev/null | grep -v '^$' | sort -u
+}
+
+backup_index_domain_dates() {
+    awk -F'|' -v d="$2" '$2 == d && $1 != "" { print $1 }' "$(_bk_index_file "$1")" 2>/dev/null | sort -ru
+}
+
 # Remote co liet ke duoc theo prefix khong (mot lan cho moi phien)
 remote_can_list() {
     local remote="$1" base="$2"
@@ -403,13 +411,14 @@ _bk_remote_size() {
 }
 
 # Moi file trong bdir phai co tren remote va DUNG kich thuoc
+# Cau truc luu tru: <remote>:<IP>/<domain>/<ngay>/<file>
 _bk_verify() {
     local folder="$1" ff bb loc rem
     for ff in "${bdir}"/*; do
         [ -f "${ff}" ] || continue
         bb=$(basename "${ff}")
         loc=$(stat -c%s "${ff}")
-        rem=$(_bk_remote_size "${remote}:${IPADDRESS}/${folder}/${bdomain}/${bb}")
+        rem=$(_bk_remote_size "${remote}:${IPADDRESS}/${bdomain}/${folder}/${bb}")
         [ "${rem}" = "${loc}" ] || return 1
     done
     return 0
@@ -430,12 +439,12 @@ backup_upload_dir() {
     # khong ho tro liet ke theo prefix nen lsf luon tra ve rong.
     _bk_verify_empty "${bdate}" || BACKUP_REMOTE_FOLDER="${bdate}_$(date +%H%M%S)"
 
-    rclone copy "${bdir}" "${remote}:${IPADDRESS}/${BACKUP_REMOTE_FOLDER}/${bdomain}"         --bwlimit 30M >> /var/log/rclone.log 2>&1
+    rclone copy "${bdir}" "${remote}:${IPADDRESS}/${bdomain}/${BACKUP_REMOTE_FOLDER}"         --bwlimit 30M >> /var/log/rclone.log 2>&1
     _bk_verify "${BACKUP_REMOTE_FOLDER}" && return 0
 
     # Chua du -> thu mot thu muc moi tinh (duong dan chua tung dung luon nhan)
     BACKUP_REMOTE_FOLDER="${bdate}_$(date +%H%M%S)_$$"
-    rclone copy "${bdir}" "${remote}:${IPADDRESS}/${BACKUP_REMOTE_FOLDER}/${bdomain}"         --bwlimit 30M >> /var/log/rclone.log 2>&1
+    rclone copy "${bdir}" "${remote}:${IPADDRESS}/${bdomain}/${BACKUP_REMOTE_FOLDER}"         --bwlimit 30M >> /var/log/rclone.log 2>&1
     _bk_verify "${BACKUP_REMOTE_FOLDER}"
 }
 
@@ -445,7 +454,7 @@ _bk_verify_empty() {
     for ff in "${bdir}"/*; do
         [ -f "${ff}" ] || continue
         bb=$(basename "${ff}")
-        [ -n "$(_bk_remote_size "${remote}:${IPADDRESS}/${1}/${bdomain}/${bb}")" ] && return 1
+        [ -n "$(_bk_remote_size "${remote}:${IPADDRESS}/${bdomain}/${1}/${bb}")" ] && return 1
     done
     return 0
 }

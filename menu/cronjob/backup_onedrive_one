@@ -85,18 +85,18 @@ _backup_single_domain() {
         return 1
     fi
 
-    # Upload len OneDrive - CHI xoa local khi upload thanh cong
-    if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}/${domain}" --bwlimit 30M >> "${LOG}" 2>&1; then
+    # Upload len OneDrive theo cau truc <IP>/<domain>/<ngay> - CHI xoa local khi upload thanh cong
+    if rclone copy "${backup_dir}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${domain}/${CURRENT_DATE}" --bwlimit 30M >> "${LOG}" 2>&1; then
         rm -rf "${backup_dir}"
-        echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong." >> "${LOG}"
+        echo "[$(date)] OK: ${domain} - Upload OneDrive thanh cong (${domain}/${CURRENT_DATE})." >> "${LOG}"
     else
         echo "[$(date)] ERROR: ${domain} - Upload OneDrive that bai. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
     fi
 
-    # Xoa backup cu cua rieng ten mien nay tren OneDrive
+    # Xoa backup cu cua rieng ten mien nay tren OneDrive (<IP>/<domain>/<ngay>)
     if [[ -n "${d_backup_num}" && "${d_backup_num}" =~ ^[0-9]+$ ]]; then
-        rclone -q --min-age "${d_backup_num}"d --include "*/${domain}/**" delete "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
-        rclone -q --min-age "${d_backup_num}"d rmdirs "onedrive:${onedrive_folder_name}/${IPADDRESS}" >> "${LOG}" 2>&1
+        rclone -q --min-age "${d_backup_num}"d delete "onedrive:${onedrive_folder_name}/${IPADDRESS}/${domain}" >> "${LOG}" 2>&1
+        rclone -q --min-age "${d_backup_num}"d rmdirs --leave-root "onedrive:${onedrive_folder_name}/${IPADDRESS}/${domain}" >> "${LOG}" 2>&1
     fi
 }
 

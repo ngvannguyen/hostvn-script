@@ -92,5 +92,5 @@ for users in /home/*; do
 done
 
 # Xoa backup cu tren Google Drive
-rclone -q --min-age "${backup_num}"d delete "${remote}:$IPADDRESS" >> "${LOG}" 2>&1
-rclone -q --min-age "${backup_num}"d rmdirs "${remote}:$IPADDRESS" >> "${LOG}" 2>&1
+rclone -q --min-age "${backup_num}"d delete "${remote}:${IPADDRESS}" >> "${LOG}" 2>&1
+rclone -q --min-age "${backup_num}"d rmdirs --leave-root "${remote}:${IPADDRESS}" >> "${LOG}" 2>&1

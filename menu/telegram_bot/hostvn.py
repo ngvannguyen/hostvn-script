@@ -1224,8 +1224,8 @@ def _upload_backup(remote: str, date: str, domain: str, dest: str) -> tuple[bool
         return False, "không có file nào để đẩy lên."
 
     def _remote_size(folder: str, f: str) -> str:
-        out = sh(f"rclone lsjson {qr}:{qip}/{shlex.quote(folder)}/{qd}/{shlex.quote(f)} 2>/dev/null "
-                 f"| grep -o '\"Size\":[0-9]*' | head -1 | cut -d: -f2", 120)
+        out = sh(f"rclone lsjson {qr}:{qip}/{qd}/{shlex.quote(folder)}/{shlex.quote(f)} 2>/dev/null "
+                 f"| grep -oE '\"Size\":[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+'", 120)
         return out.strip()
 
     def _verify(folder: str) -> bool:
@@ -1237,7 +1237,7 @@ def _upload_backup(remote: str, date: str, domain: str, dest: str) -> tuple[bool
         return True
 
     def _push(folder: str) -> None:
-        sh(f"rclone copy {qdest} {qr}:{qip}/{shlex.quote(folder)}/{qd} --bwlimit 30M 2>&1",
+        sh(f"rclone copy {qdest} {qr}:{qip}/{qd}/{shlex.quote(folder)} --bwlimit 30M 2>&1",
            1800, merge=True)
 
     folder = date if all(not _remote_size(date, f) for f in files)         else f"{date}_{time.strftime('%H%M%S')}"
@@ -1320,10 +1320,15 @@ def fetch_cloud_backup(remote: str, date: str, domain: str) -> tuple[bool, str]:
 
     got = 0
     for f in files:
-        # copyto theo DUONG DAN CHINH XAC — khong dua vao liet ke
-        rc = sh(f"rclone copyto {shlex.quote(remote)}:{shlex.quote(ip)}/{shlex.quote(date)}/"
-                f"{shlex.quote(domain)}/{shlex.quote(f)} {shlex.quote(dest)}/{shlex.quote(f)} "
+        # copyto theo DUONG DAN CHINH XAC — thu cau truc moi (<IP>/<domain>/<ngay>) truoc,
+        # khong co thi fallback sang cau truc cu (<IP>/<ngay>/<domain>) de khong mat ban backup cu.
+        rc = sh(f"rclone copyto {shlex.quote(remote)}:{shlex.quote(ip)}/{shlex.quote(domain)}/"
+                f"{shlex.quote(date)}/{shlex.quote(f)} {shlex.quote(dest)}/{shlex.quote(f)} "
                 f"--bwlimit 30M >/dev/null 2>&1; echo $?", 1800)
+        if rc.strip() != "0" or not Path(f"{dest}/{f}").exists():
+            rc = sh(f"rclone copyto {shlex.quote(remote)}:{shlex.quote(ip)}/{shlex.quote(date)}/"
+                    f"{shlex.quote(domain)}/{shlex.quote(f)} {shlex.quote(dest)}/{shlex.quote(f)} "
+                    f"--bwlimit 30M >/dev/null 2>&1; echo $?", 1800)
         if rc.strip() == "0" and Path(f"{dest}/{f}").exists():
             got += 1
     if got == 0:

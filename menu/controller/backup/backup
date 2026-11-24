@@ -161,9 +161,12 @@ _run() {
         clear
         printf "%s\n" "${GREEN}${PROCESSING}${NC}"
         onedrive_folder_name=$(grep -w "onedrive_folder_name" "${FILE_INFO}" | cut -f2 -d'=')
-        rclone copy /home/backup/"${CURRENT_DATE}"/"${domain}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${CURRENT_DATE}/${domain}" --bwlimit 30M >> /var/log/rclone.log 2>&1
-        rm -rf /home/backup/"${CURRENT_DATE}"/"${domain}"
-        notify="${GREEN}Backup success.${NC}"
+        if rclone copy /home/backup/"${CURRENT_DATE}"/"${domain}" "onedrive:${onedrive_folder_name}/${IPADDRESS}/${domain}/${CURRENT_DATE}" --bwlimit 30M >> /var/log/rclone.log 2>&1; then
+            rm -rf /home/backup/"${CURRENT_DATE}"/"${domain}"
+            notify="${GREEN}Backup success.${NC}"
+        else
+            notify="${RED}Day len OneDrive that bai (ban tren may van con).${NC}"
+        fi
     else
         _run_backup
         notify="${GREEN}Backup success.${NC}"

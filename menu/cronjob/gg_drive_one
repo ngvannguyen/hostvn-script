@@ -96,10 +96,10 @@ _backup_single_domain() {
         echo "[$(date)] ERROR: ${domain} - Upload len ${d_remote} that bai hoac khong khop dung luong. Giu lai backup local tai ${backup_dir}" >> "${LOG}"
     fi
 
-    # Xoa backup cu cua rieng ten mien nay tren Google Drive
+    # Xoa backup cu cua rieng ten mien nay tren Google Drive (<IP>/<domain>/<ngay>)
     if [[ -n "${d_backup_num}" && "${d_backup_num}" =~ ^[0-9]+$ ]]; then
-        rclone -q --min-age "${d_backup_num}"d --include "*/${domain}/**" delete "${d_remote}:${IPADDRESS}" >> "${LOG}" 2>&1
-        rclone -q --min-age "${d_backup_num}"d rmdirs "${d_remote}:${IPADDRESS}" >> "${LOG}" 2>&1
+        rclone -q --min-age "${d_backup_num}"d delete "${d_remote}:${IPADDRESS}/${domain}" >> "${LOG}" 2>&1
+        rclone -q --min-age "${d_backup_num}"d rmdirs --leave-root "${d_remote}:${IPADDRESS}/${domain}" >> "${LOG}" 2>&1
     fi
 }
 
